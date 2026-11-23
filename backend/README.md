@@ -114,13 +114,15 @@ python -c 'import secrets; print(secrets.token_urlsafe(48))'
 
 Settings load `.env` relative to the current working directory. Start the
 backend from `backend/` so `.env` and the default SQLite path resolve as shown.
-The repository may contain a development `.env`; replace its secret for local
-use and never reuse it in a deployed environment.
+The repository excludes local `.env` files. Create `backend/.env` for local
+development, use a private random secret, and never reuse it in a deployed
+environment.
 
-The frontend currently targets `http://127.0.0.1:8000/api` directly. Its API
-URL is not configured through a frontend environment variable. If changing
-host or port, update the frontend service URLs and backend CORS configuration
-together.
+The frontend uses relative `/api` URLs. Vite proxies these requests to
+`http://127.0.0.1:8000` during local development. If changing the backend
+host or port, update `frontend/vite.config.js`. The backend CORS allowlist
+applies when a browser calls the backend directly, rather than through the
+Vite proxy.
 
 ## Run and verify
 
@@ -596,8 +598,8 @@ Normal handler success responses use HTTP 200 unless otherwise noted.
 | `No module named 'ollama'` during import | Install the missing client with `python -m pip install ollama`. It is imported by Copilot code but absent from `requirements.txt`. |
 | AI request fails although API starts | Ensure Ollama is running and `llama3.2:1b` is available locally. |
 | SQLite database appears in an unexpected folder | `sqlite:///./commerce.db` is relative to the current working directory; run from `backend/` or set an absolute `DATABASE_URL`. |
-| Frontend request fails with CORS | Current backend CORS allows only `http://localhost:5173` and `http://127.0.0.1:5173`. `CORS_ORIGINS` alone does not change it. |
-| Address/port is already in use | Start Uvicorn on another port with `python -m uvicorn app.main:app --reload --port 8001`; update frontend service base URLs and CORS accordingly. |
+| Frontend request fails with CORS | Use the Vite development server and its `/api` proxy. For direct browser-to-backend requests, the backend CORS allowlist is configured in `app/main.py`; `CORS_ORIGINS` alone does not change it. |
+| Address/port is already in use | Start Uvicorn on another port with `python -m uvicorn app.main:app --reload --port 8001` and update the `/api` proxy target in `frontend/vite.config.js`. |
 | Missing demo users when running order/ticket seeder | Run `seed_users.py` first. |
 | Duplicate products after reseeding | The product seeder does not deduplicate. Use a fresh database or remove duplicates through a controlled data migration; do not rerun casually. |
 | Ticket number missing or legacy schema | Run `python -m app.database.init_db` from `backend/`; startup also runs the ticket-number migration. |

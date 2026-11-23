@@ -46,27 +46,25 @@ a URL router.
 - A running AI Commerce Support backend. Its documented setup is in
   [`../backend/README.md`](../backend/README.md).
 
-The backend's development CORS configuration allows the Vite origins
-`http://localhost:5173` and `http://127.0.0.1:5173`.
+The Vite development server proxies API requests to the local backend at
+`http://127.0.0.1:8000`, avoiding cross-origin browser requests in local
+development.
 
 ## Install and configure
-
-If cloning the project, substitute the repository's actual remote URL; that
-URL is not configured in the project files.
 
 ### Windows PowerShell
 
 ```powershell
-git clone <repository-url>
-Set-Location .\ai-commerce-support\frontend
+git clone https://github.com/rajesh-v-github/ai-commerce.git
+Set-Location .\ai-commerce\frontend
 npm install
 ```
 
 ### macOS/Linux shell
 
 ```sh
-git clone <repository-url>
-cd ai-commerce-support/frontend
+git clone https://github.com/rajesh-v-github/ai-commerce.git
+cd ai-commerce/frontend
 npm install
 ```
 
@@ -76,15 +74,9 @@ declared dependencies.
 ### Environment and backend URL
 
 The frontend does **not** read a `.env` file and has no frontend environment
-variables. API service modules currently use the hard-coded base URL:
-
-```text
-http://127.0.0.1:8000/api
-```
-
-To use a different backend host or port, update the API URL constants in
-`src/services/` and ensure the backend CORS allowlist includes the frontend's
-origin. Changing a `.env` variable alone will not reconfigure this app.
+variables. API service modules use relative `/api` paths, and
+`vite.config.js` proxies those requests to `http://127.0.0.1:8000` in
+development. To change the backend host or port, update the Vite proxy target.
 
 The backend must be running before signing in or loading data. The backend
 uses JWT bearer authentication; after a successful login, the frontend stores
@@ -329,8 +321,8 @@ customer list remains displayed.
 |---|---|
 | `npm install` or Vite reports an unsupported Node version | Use Node.js `^20.19.0` or `>=22.12.0`, then run `npm install` again. |
 | Page loads but API requests fail | Start the backend and verify `http://127.0.0.1:8000/api/health`. |
-| Browser reports CORS failure | Use `http://localhost:5173` or `http://127.0.0.1:5173`; these are the backend's configured development origins. |
-| Requests go to the wrong host/port | Update the hard-coded API URLs in `src/services/`; a frontend `.env` variable is not currently used. |
+| Browser reports CORS failure | Confirm the frontend is running through Vite at `http://localhost:5173` or `http://127.0.0.1:5173` and that the Vite `/api` proxy target is correct. |
+| Requests go to the wrong host/port | Update the `/api` proxy target in `vite.config.js`; a frontend `.env` variable is not currently used. |
 | Login works, then protected requests return 401 | The token may have expired. Sign in again; the frontend shows a session-expired prompt on 401. |
 | AI tools return errors while ordinary APIs work | Check the backend's Ollama service and required model; AI calls are executed by the backend. |
 | Production build fails | Check terminal diagnostics and run `npm install` with a supported Node version, then retry `npm run build`. |
