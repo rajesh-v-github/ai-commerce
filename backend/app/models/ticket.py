@@ -3,12 +3,16 @@ from sqlalchemy import DateTime
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import ForeignKey
+from sqlalchemy import Index
 
 from app.database.db import Base
 
 
 class Ticket(Base):
     __tablename__ = "tickets"
+    __table_args__ = (
+        Index("uq_tickets_ticket_number", "TicketNumber", unique=True),
+    )
 
     id = Column(Integer, primary_key=True)
 

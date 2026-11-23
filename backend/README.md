@@ -18,7 +18,7 @@ products, tickets, dashboard summaries, and AI-assisted support workflows.
 
 - Python with FastAPI and Uvicorn
 - SQLAlchemy ORM
-- SQLite by default
+- SQLite by default; PostgreSQL is also supported through SQLAlchemy
 - Pydantic request models and settings
 - JWT bearer authentication; Passlib/bcrypt password hashing
 - Ollama-backed AI workflows
@@ -27,11 +27,12 @@ Important backend files and directories:
 
 | Path | Responsibility |
 |---|---|
-| `app/main.py` | Creates the FastAPI application, initializes database tables and ticket-number migration, configures CORS, and mounts routers. |
+| `app/main.py` | Creates the FastAPI application, configures CORS, and mounts routers. |
 | `app/api/` | Route handlers for health, authentication, products, orders, tickets, dashboards, customers, and Copilot. |
 | `app/schemas/` | Pydantic request and response data models. |
 | `app/models/` | SQLAlchemy database models. |
-| `app/database/` | Engine/session setup, table initialization, and ticket-number migration. |
+| `app/database/` | Engine/session setup and explicit Alembic migration runner. |
+| `migrations/` | Versioned schema migrations managed by Alembic. |
 | `app/agents/` | Copilot orchestration and support/product/order AI tools. |
 | `app/services/` | Business services, including order checkout and Ollama integration. |
 | `seed_users.py` | Adds the sample customer and support users if they are absent. |
@@ -148,7 +149,7 @@ publicly shared or example JWT secret with real data.
 | `JWT_SECRET_KEY` | Yes | None | Signs and verifies access tokens. Keep private and use a strong value. |
 | `JWT_ALGORITHM` | No | `HS256` | JWT signing algorithm. |
 | `JWT_EXPIRE_MINUTES` | No | `60` | Access token lifetime in minutes. |
-| `DATABASE_URL` | No | `sqlite:///./commerce.db` | SQLAlchemy database URL. With the default, the SQLite file is relative to the backend process working directory. |
+| `DATABASE_URL` | No | `sqlite:///./commerce.db` | SQLAlchemy database URL. Use `postgresql+psycopg://...` for PostgreSQL. |
 | `APP_NAME` | No | `AI Commerce Support` | Settings value; the FastAPI title is currently hard-coded to the same value in `app/main.py`. |
 | `CORS_ORIGINS` | No | `http://localhost:5173` | Declared setting, but not currently used by the app. CORS origins are hard-coded to `http://localhost:5173` and `http://127.0.0.1:5173`. |
 
@@ -158,7 +159,70 @@ The repository excludes local `.env` files. Create `backend/.env` for local
 development, use a private random secret, and never reuse it in a deployed
 environment.
 
-### Initialize SQLite and load sample data
+## Database initialization and sample data
+
+The application no longer creates or changes tables at startup. Apply schema
+migrations explicitly from `backend/` before starting the API:
+
+```powershell
+python -m app.database.init_db
+```
+
+For a new local setup, this creates the schema in the selected database. The
+default remains SQLite; its file path is relative to the backend working
+directory. Back up the database before applying migrations.
+
+#### Use PostgreSQL
+
+Install PostgreSQL locally and create a database owned by a dedicated login
+role. The backend requirements install the PostgreSQL driver; no paid service
+is needed. Set `DATABASE_URL` in the private `backend/.env`, for example:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://ai_commerce_app:URL_ENCODED_PASSWORD@localhost:5432/ai_commerce
+```
+
+URL-encode any special characters in the password. Keep the URL in `.env`, not
+in source control or chat. Run `python -m app.database.init_db` to create the
+PostgreSQL schema, then start the backend normally. To switch between SQLite
+and PostgreSQL, change `DATABASE_URL` and restart the backend. Each database
+has its own data; changing the URL does not copy or synchronize records.
+
+#### Copy SQLite data to PostgreSQL
+
+Back up the SQLite database first and use the backup as the source. Set
+`DATABASE_URL` to PostgreSQL and apply its schema migrations. Confirm all
+PostgreSQL application tables are empty, then run from `backend/`:
+
+```powershell
+python .\migrate_sqlite_to_postgres.py --source "C:\path\to\sqlite-backup.db"
+```
+
+The script reads but does not modify the SQLite file. It refuses to copy into
+non-empty PostgreSQL tables, checks SQLite integrity and foreign keys, copies
+rows in dependency order while preserving IDs, verifies each table's row count
+and content hash inside one PostgreSQL transaction, and resets PostgreSQL ID
+sequences. Any failed validation rolls back the copy. A successful run prints
+the verified counts and hashes. Do not run the demo seed scripts against the
+migrated database; they would add duplicate sample products and records.
+
+#### Existing SQLite databases
+
+Older local databases may already have the application tables but no
+`alembic_version` history. Back them up and verify that they match the current
+models before marking the initial schema as applied:
+
+```powershell
+python -m alembic stamp head
+python -m app.database.init_db
+```
+
+The first command records the baseline only; it does not create, change, or
+copy application tables. `init_db` rejects an unversioned, non-empty
+application database and reports this safe next step instead of attempting
+to recreate its tables.
+
+### SQLite setup details
 
 No separate SQLite server is required. The Python installation includes
 `sqlite3`, and SQLAlchemy is installed with `requirements.txt`. Check the
@@ -168,15 +232,15 @@ SQLite library available to Python with:
 python -c "import sqlite3; print(sqlite3.sqlite_version)"
 ```
 
-From `backend/`, explicitly create the database schema with:
+From `backend/`, explicitly apply pending schema migrations with:
 
 ```powershell
 python -m app.database.init_db
 ```
 
-The application also creates the tables and runs the ticket-number migration
-on startup. With the default `DATABASE_URL`, both commands create/use
-`backend/commerce.db` when run from `backend/`. To use another SQLite file,
+The application does not modify the schema on startup. With the default
+`DATABASE_URL`, the command creates/uses `backend/commerce.db` when run from
+`backend/`. To use another SQLite file,
 change `DATABASE_URL` in the local `backend/.env`, for example:
 
 ```dotenv
@@ -227,18 +291,7 @@ configuration. For deployment, use an appropriate ASGI server/process manager,
 secure secrets, configure database/CORS for the deployment, and do not enable
 development reload.
 
-## Database initialization and sample data
-
-At application startup, `app/main.py` creates tables and runs the
-ticket-number migration. The explicit initializer can also be run from
-`backend/`:
-
-```powershell
-python -m app.database.init_db
-```
-
-The migration adds/backfills the `TicketNumber` column and its unique index.
-Initialization does not seed users, products, orders, or tickets.
+## Seed demo data and tests
 
 To load sample data, run these scripts in order:
 
@@ -685,4 +738,4 @@ Normal handler success responses use HTTP 200 unless otherwise noted.
 | Address/port is already in use | Start Uvicorn on another port with `python -m uvicorn app.main:app --reload --port 8001` and update the `/api` proxy target in `frontend/vite.config.js`. |
 | Missing demo users when running order/ticket seeder | Run `seed_users.py` first. |
 | Duplicate products after reseeding | The product seeder does not deduplicate. Use a fresh database or remove duplicates through a controlled data migration; do not rerun casually. |
-| Ticket number missing or legacy schema | Run `python -m app.database.init_db` from `backend/`; startup also runs the ticket-number migration. |
+| Existing database reports missing Alembic history | Back it up, verify it matches the current schema, then run `python -m alembic stamp head` once from `backend/`. |

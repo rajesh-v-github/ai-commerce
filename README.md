@@ -24,6 +24,8 @@ products, tickets, customer records, and AI-assisted support workflows.
 
 SQLite is included with Python through its `sqlite3` module. **You do not need
 to install a separate SQLite server or database driver.**
+PostgreSQL is also supported as an optional local database; its setup and
+migration instructions are in [backend/README.md](backend/README.md).
 
 ### 1. Set up the backend
 
@@ -46,17 +48,21 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 The default `DATABASE_URL=sqlite:///./commerce.db` uses a local file at
-`backend/commerce.db` when commands run from `backend/`. Initialize the schema:
+`backend/commerce.db` when commands run from `backend/`. Initialize the
+schema:
 
 ```powershell
 python -m app.database.init_db
 ```
 
-The app also initializes tables on startup. The database file is created
-locally and is intentionally excluded from Git. To use another SQLite file,
-change `DATABASE_URL` in `backend/.env`; for example,
-`sqlite:///./data/commerce.db` uses `backend/data/commerce.db`. Create the
-`data` folder first—SQLite does not create missing parent folders.
+The database file is created locally and is intentionally excluded from Git.
+Schema changes are applied with Alembic before starting the app; see the
+[backend database instructions](backend/README.md#database-initialization-and-sample-data).
+To use another SQLite file, change `DATABASE_URL` in `backend/.env`; for
+example, `sqlite:///./data/commerce.db` uses `backend/data/commerce.db`.
+Create the `data` folder first—SQLite does not create missing parent folders.
+To copy existing SQLite data to PostgreSQL, follow the guarded copy procedure
+in the [backend database instructions](backend/README.md#copy-sqlite-data-to-postgresql).
 
 ### 2. Install Ollama and its model
 

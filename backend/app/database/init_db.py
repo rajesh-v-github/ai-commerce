@@ -1,15 +1,43 @@
-from app.database.db import Base, engine
-from app.database.migrations import ensure_ticket_number_column
+from pathlib import Path
 
-from app.models.user import User
-from app.models.product import Product
-from app.models.order import Order
-from app.models.order import OrderItem
-from app.models.ticket import Ticket
-from app.models.ticket_message import TicketMessage
-from app.models.ticket_status_history import TicketStatusHistory
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import inspect
 
-Base.metadata.create_all(bind=engine)
-ensure_ticket_number_column(engine)
+from app.database.db import engine
 
-print("Database initialized successfully.")
+
+_APPLICATION_TABLES = {
+    "users",
+    "products",
+    "orders",
+    "order_items",
+    "tickets",
+    "ticket_messages",
+    "ticket_status_history",
+}
+
+
+def main():
+    backend_dir = Path(__file__).resolve().parents[2]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option(
+        "script_location", str(backend_dir / "migrations")
+    )
+    with engine.connect() as connection:
+        existing_tables = set(inspect(connection).get_table_names())
+    if (
+        "alembic_version" not in existing_tables
+        and existing_tables.intersection(_APPLICATION_TABLES)
+    ):
+        raise RuntimeError(
+            "An existing database without Alembic version history was found. "
+            "Back it up and verify its schema, then run "
+            "`python -m alembic stamp head` once before initializing it."
+        )
+    command.upgrade(config, "head")
+    print("Database migrations applied successfully.")
+
+
+if __name__ == "__main__":
+    main()
