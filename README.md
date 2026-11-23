@@ -9,6 +9,8 @@ products, tickets, customer records, and AI-assisted support workflows.
 - `backend/` — FastAPI API, database models, seed scripts, and tests. See
   [backend setup and API documentation](backend/README.md).
 - `frontend/` — React and Vite support workspace.
+- `release-notes/` — dated summaries of project milestones, including the
+  [PostgreSQL migration](release-notes/2026-11-23-postgresql-migration.md).
 - `TEMPORARY-SHARING.md` — Windows instructions for sharing a local demo
   temporarily through LocalTunnel.
 
