@@ -47,12 +47,11 @@ Important backend files and directories:
 - `pip`
 - Ollama installed and running for AI features, with model `llama3.2:1b`
   available.
-- The `ollama` Python client is imported by the application but is not listed
-  in `requirements.txt`. Install it separately as described below or update
-  the dependency manifest before relying on a clean environment.
+- The Ollama Python client is installed from `requirements.txt`.
 
-SQLite is the default database, so no separate database server is required for
-local development.
+SQLite is the default database. Python includes its SQLite driver (`sqlite3`),
+so no separate database server or Python database driver installation is
+required for local development.
 
 ## Install and configure
 
@@ -67,7 +66,6 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m pip install ollama
 ```
 
 ### macOS/Linux shell
@@ -78,28 +76,70 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m pip install ollama
 ```
 
-Create `backend/.env` (or set the values in the process environment). Use a
-private, randomly generated secret; do not commit real credentials.
+### Install Ollama and the model
 
-```dotenv
-JWT_SECRET_KEY=replace-with-a-long-random-secret
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=60
-DATABASE_URL=sqlite:///./commerce.db
+The Ollama application runs the local language model. The Python package in
+`requirements.txt` connects this backend to that application; installing the
+Python package alone does not install Ollama or a model.
+
+1. Install Ollama for your operating system from the
+   [official Ollama download page](https://ollama.com/download). On Windows,
+   download and run the installer. On macOS, download and open the app. On
+   Linux, follow the installation instructions on that page.
+2. Start/open Ollama and confirm the CLI is available:
+
+   ```powershell
+   ollama --version
+   ```
+
+3. Download the model used by this project:
+
+   ```powershell
+   ollama pull llama3.2:1b
+   ```
+
+4. Confirm the model can run:
+
+   ```powershell
+   ollama run llama3.2:1b
+   ```
+
+   Enter a short prompt, then type `/bye` to exit. Ollama must remain running
+   while using the backend's AI features. The local Ollama service normally
+   listens on `http://127.0.0.1:11434`.
+
+The Ollama model is downloaded separately from Python packages and requires an
+internet connection and enough disk space. The backend calls this model by the
+name `llama3.2:1b` in `app/services/ollama_service.py`.
+
+### Configure the local environment
+
+Create `backend/.env` by copying the root template. Run this from the
+repository root:
+
+```powershell
+Copy-Item .env.example backend\.env
 ```
 
-Generate a secret locally, for example:
+Open `backend/.env` and replace `JWT_SECRET_KEY` with a private random value.
+Generate one locally from PowerShell:
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-```sh
-python -c 'import secrets; print(secrets.token_urlsafe(48))'
+The template's default database setting is:
+
+```dotenv
+DATABASE_URL=sqlite:///./commerce.db
 ```
+
+The relative SQLite path is resolved from the backend working directory. When
+you start commands from `backend/`, the database file is `backend/commerce.db`.
+Keep `.env` and the database file local; they are excluded from Git. Never use a
+publicly shared or example JWT secret with real data.
 
 ### Configuration variables
 
@@ -117,6 +157,35 @@ backend from `backend/` so `.env` and the default SQLite path resolve as shown.
 The repository excludes local `.env` files. Create `backend/.env` for local
 development, use a private random secret, and never reuse it in a deployed
 environment.
+
+### Initialize SQLite and load sample data
+
+No separate SQLite server is required. The Python installation includes
+`sqlite3`, and SQLAlchemy is installed with `requirements.txt`. Check the
+SQLite library available to Python with:
+
+```powershell
+python -c "import sqlite3; print(sqlite3.sqlite_version)"
+```
+
+From `backend/`, explicitly create the database schema with:
+
+```powershell
+python -m app.database.init_db
+```
+
+The application also creates the tables and runs the ticket-number migration
+on startup. With the default `DATABASE_URL`, both commands create/use
+`backend/commerce.db` when run from `backend/`. To use another SQLite file,
+change `DATABASE_URL` in the local `backend/.env`, for example:
+
+```dotenv
+DATABASE_URL=sqlite:///./data/commerce.db
+```
+
+Create the `data` directory before starting the application. SQLite will
+create the database file, but it does not create missing parent directories.
+Back up the database file before replacing or modifying local data.
 
 The frontend uses relative `/api` URLs. Vite proxies these requests to
 `http://127.0.0.1:8000` during local development. If changing the backend
@@ -178,6 +247,20 @@ python seed_users.py
 python seed_prodcuts.py
 python seed_orders_and_tickets.py
 ```
+
+All records generated by these scripts are fictional sample/demo data; this
+project does not include real customer or order data. The demo credentials
+created by `seed_users.py` are:
+
+| Account | Password | Role |
+|---|---|---|
+| `support1` | `Password123!` | Support executive |
+| `customer1` through `customer10` | `Password123!` | Customer |
+
+Use `support1` to sign in to the support workspace. Customer accounts are
+intended for sample data and are not permitted to enter that workspace. These
+hard-coded credentials are public demo credentials, not private account
+secrets; never reuse them or the sample data for a production deployment.
 
 The demo order/ticket seeder requires users `customer1` through `customer10`
 and `support1`. The user seeder skips existing usernames. The product seeder
@@ -595,8 +678,8 @@ Normal handler success responses use HTTP 200 unless otherwise noted.
 | Symptom | Resolution |
 |---|---|
 | `JWT_SECRET_KEY` missing during startup | Create `backend/.env` or set the variable in the shell. Start the command from `backend/` so the dotenv path is correct. |
-| `No module named 'ollama'` during import | Install the missing client with `python -m pip install ollama`. It is imported by Copilot code but absent from `requirements.txt`. |
-| AI request fails although API starts | Ensure Ollama is running and `llama3.2:1b` is available locally. |
+| `No module named 'ollama'` during import | Activate the backend virtual environment and run `python -m pip install -r requirements.txt`. |
+| AI request fails although API starts | Start/open Ollama, then run `ollama pull llama3.2:1b` and verify it with `ollama run llama3.2:1b`. |
 | SQLite database appears in an unexpected folder | `sqlite:///./commerce.db` is relative to the current working directory; run from `backend/` or set an absolute `DATABASE_URL`. |
 | Frontend request fails with CORS | Use the Vite development server and its `/api` proxy. For direct browser-to-backend requests, the backend CORS allowlist is configured in `app/main.py`; `CORS_ORIGINS` alone does not change it. |
 | Address/port is already in use | Start Uvicorn on another port with `python -m uvicorn app.main:app --reload --port 8001` and update the `/api` proxy target in `frontend/vite.config.js`. |
