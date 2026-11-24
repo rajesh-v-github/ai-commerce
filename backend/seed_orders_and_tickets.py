@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 import random
-from decimal import Decimal
 
 from app.database.db import SessionLocal, engine
 from app.database.migrations import ensure_ticket_number_column
 from app.models.order import Order, OrderItem
+from app.models.order_status_history import OrderStatusHistory
 from app.models.product import Product
 from app.models.ticket import Ticket
 from app.models.ticket_message import TicketMessage
@@ -114,7 +116,8 @@ def populate_missing_demo_order_items(db, rng):
             "Cannot populate seeded order items because the product catalog is empty."
         )
 
-    for order in orders_without_items:
+    now = datetime.utcnow()
+    for idx, order in enumerate(orders_without_items):
         selected_products = rng.sample(
             products,
             k=min(len(products), rng.randint(1, 3)),
@@ -134,6 +137,50 @@ def populate_missing_demo_order_items(db, rng):
             )
             order_total += unit_price * quantity
         order.total_amount = order_total
+        order.subtotal_amount = order_total
+        order.shipping_amount = Decimal("0.00")
+        order.tax_amount = (
+            order_total * Decimal("0.18") / Decimal("1.18")
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        order.payment_method = order.payment_method or "MOCK_CARD"
+        order.payment_status = (
+            "REFUNDED"
+            if (order.status or "").upper() == "CANCELLED"
+            else "PAID"
+        )
+        order.payment_reference = (
+            order.payment_reference or f"MOCK-SEED-{order.order_number}"
+        )
+        if order.customer is not None:
+            order.shipping_full_name = (
+                order.shipping_full_name
+                or order.customer.full_name
+                or order.customer.username
+            )
+            order.shipping_email = order.shipping_email or order.customer.email
+            order.shipping_phone = order.shipping_phone or order.customer.phone
+            order.shipping_address = (
+                order.shipping_address or order.customer.shipping_address
+            )
+            order.billing_address = (
+                order.billing_address or order.customer.billing_address
+            )
+        if order.created_at is None:
+            days_ago = (len(orders_without_items) - idx) % 13
+            ts = now - timedelta(days=days_ago, hours=(idx * 3) % 18)
+            order.created_at = ts
+            order.updated_at = ts
+        if not order.status_history:
+            db.add(
+                OrderStatusHistory(
+                    order=order,
+                    changed_by_user_id=order.customer_id,
+                    old_status=None,
+                    new_status=(order.status or "PROCESSING").upper(),
+                    note="Historical order imported into SoranoGear fulfillment ledger",
+                    changed_at=order.created_at or now,
+                )
+            )
 
     print(
         f"Added product items to {len(orders_without_items)} seeded orders "

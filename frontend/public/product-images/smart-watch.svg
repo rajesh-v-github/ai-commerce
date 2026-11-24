@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1376 768" width="1376" height="768">
+  <defs>
+    <linearGradient id="bgWall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#798694"/>
+      <stop offset="55%" stop-color="#94a1af"/>
+      <stop offset="100%" stop-color="#6b7785"/>
+    </linearGradient>
+    <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c3cdd7"/>
+      <stop offset="100%" stop-color="#e3eaf1"/>
+    </linearGradient>
+    <linearGradient id="titaniumCase" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="45%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="bandGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="50%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="oledScreen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#090d16"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <radialGradient id="shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0f172a" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1376" height="495" fill="url(#bgWall)"/>
+  <rect y="495" width="1376" height="273" fill="url(#deskTop)"/>
+  <ellipse cx="688" cy="625" rx="210" ry="32" fill="url(#shadow)"/>
+
+  <!-- Top Band -->
+  <path d="M612,115 C616,82 760,82 764,115 L778,225 L598,225 Z" fill="url(#bandGrad)"/>
+  <!-- Bottom Band -->
+  <path d="M598,515 L778,515 L762,625 C756,654 620,654 614,625 Z" fill="url(#bandGrad)"/>
+  <line x1="628" y1="548" x2="748" y2="548" stroke="#475569" stroke-width="2" opacity="0.45"/>
+  <line x1="632" y1="576" x2="744" y2="576" stroke="#475569" stroke-width="2" opacity="0.45"/>
+
+  <!-- Digital Crown & Side Button -->
+  <rect x="822" y="276" width="16" height="52" rx="6" fill="#64748b" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="822" y="362" width="9" height="68" rx="4" fill="#475569"/>
+
+  <!-- Watch Case -->
+  <rect x="548" y="205" width="280" height="330" rx="64" fill="url(#titaniumCase)" stroke="#94a3b8" stroke-width="3"/>
+  <rect x="564" y="221" width="248" height="298" rx="52" fill="url(#oledScreen)" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Activity Rings & Fitness UI -->
+  <circle cx="688" cy="342" r="74" fill="none" stroke="#1e293b" stroke-width="14"/>
+  <circle cx="688" cy="342" r="74" fill="none" stroke="#f43f5e" stroke-width="14" stroke-dasharray="365 465" stroke-linecap="round" transform="rotate(-90 688 342)"/>
+  <circle cx="688" cy="342" r="54" fill="none" stroke="#1e293b" stroke-width="14"/>
+  <circle cx="688" cy="342" r="54" fill="none" stroke="#10b981" stroke-width="14" stroke-dasharray="265 340" stroke-linecap="round" transform="rotate(-90 688 342)"/>
+  <circle cx="688" cy="342" r="34" fill="none" stroke="#1e293b" stroke-width="14"/>
+  <circle cx="688" cy="342" r="34" fill="none" stroke="#38bdf8" stroke-width="14" stroke-dasharray="170 214" stroke-linecap="round" transform="rotate(-90 688 342)"/>
+
+  <!-- Time & BPM -->
+  <text x="688" y="458" text-anchor="middle" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="30" font-weight="700" letter-spacing="1">09:41</text>
+  <text x="688" y="488" text-anchor="middle" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="16" font-weight="600">72 BPM  •  8,420 STEPS</text>
+
+  <!-- Subtle Glass Specular Reflection -->
+  <path d="M580,232 Q690,235 790,295 L796,258 Q750,224 620,224 Z" fill="#ffffff" opacity="0.07"/>
+</svg>

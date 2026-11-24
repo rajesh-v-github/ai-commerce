@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1376 768" width="1376" height="768">
+  <defs>
+    <linearGradient id="bgWall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#788594"/>
+      <stop offset="55%" stop-color="#94a2b0"/>
+      <stop offset="100%" stop-color="#697584"/>
+    </linearGradient>
+    <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c3cdd7"/>
+      <stop offset="100%" stop-color="#e5ecf3"/>
+    </linearGradient>
+    <linearGradient id="ipsPanel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="38%" stop-color="#1d4ed8"/>
+      <stop offset="72%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#14b8a6"/>
+    </linearGradient>
+    <linearGradient id="standMetal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#94a3b8"/>
+      <stop offset="50%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+    <radialGradient id="shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0f172a" stop-opacity="0.46"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1376" height="515" fill="url(#bgWall)"/>
+  <rect y="515" width="1376" height="253" fill="url(#deskTop)"/>
+  <ellipse cx="688" cy="634" rx="260" ry="30" fill="url(#shadow)"/>
+
+  <!-- Ergonomic Brushed Silver Stand Column -->
+  <rect x="656" y="455" width="64" height="158" rx="6" fill="url(#standMetal)" stroke="#64748b" stroke-width="1.5"/>
+  <ellipse cx="688" cy="545" rx="16" ry="24" fill="#7c8b9b" stroke="#cbd5e1" stroke-width="2"/>
+  <!-- Flat Minimalist Base -->
+  <polygon points="545,606 831,606 862,632 514,632" fill="url(#standMetal)" stroke="#64748b" stroke-width="1.5"/>
+
+  <!-- 24-inch Frameless IPS Display -->
+  <rect x="318" y="102" width="740" height="398" rx="10" fill="#111827" stroke="#334155" stroke-width="3"/>
+  <rect x="328" y="112" width="720" height="368" rx="4" fill="url(#ipsPanel)"/>
+
+  <!-- Crisp Abstract Color-Accurate IPS Artwork -->
+  <circle cx="845" cy="245" r="145" fill="#38bdf8" opacity="0.28"/>
+  <polygon points="328,480 560,210 790,480" fill="#1e3a8a" opacity="0.55"/>
+  <polygon points="520,480 770,175 1048,425 1048,480" fill="#0f172a" opacity="0.42"/>
+  <path d="M328,390 Q580,260 1048,340 L1048,480 L328,480 Z" fill="#2dd4bf" opacity="0.22"/>
+  <!-- Subtle glass diagonal reflection -->
+  <polygon points="328,112 640,112 465,480 328,480" fill="#ffffff" opacity="0.06"/>
+
+  <!-- Bottom Chin Bar & Power LED -->
+  <rect x="318" y="482" width="740" height="18" rx="3" fill="#1e293b"/>
+  <circle cx="688" cy="491" r="2.5" fill="#38bdf8"/>
+</svg>
