@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1376 768" width="1376" height="768">
+  <defs>
+    <linearGradient id="bgWall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6e7a88"/>
+      <stop offset="55%" stop-color="#8794a2"/>
+      <stop offset="100%" stop-color="#5d6876"/>
+    </linearGradient>
+    <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#bac5d0"/>
+      <stop offset="100%" stop-color="#dde4ec"/>
+    </linearGradient>
+    <linearGradient id="screenBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b132b"/>
+      <stop offset="45%" stop-color="#1d2d5e"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="chassis" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1c222b"/>
+      <stop offset="50%" stop-color="#2c3442"/>
+      <stop offset="100%" stop-color="#141820"/>
+    </linearGradient>
+    <linearGradient id="rgbGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0.85"/>
+    </linearGradient>
+    <radialGradient id="contactShadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0f172a" stop-opacity="0.58"/>
+      <stop offset="65%" stop-color="#0f172a" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softBlur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+  <rect width="1376" height="485" fill="url(#bgWall)"/>
+  <rect y="485" width="1376" height="283" fill="url(#deskTop)"/>
+  <line x1="0" y1="485" x2="1376" y2="485" stroke="#9aa7b5" stroke-width="2" opacity="0.5"/>
+
+  <ellipse cx="688" cy="606" rx="370" ry="44" fill="url(#contactShadow)"/>
+  <ellipse cx="688" cy="596" rx="280" ry="18" fill="url(#rgbGlow)" filter="url(#softBlur)" opacity="0.45"/>
+
+  <!-- Screen Lid -->
+  <g>
+    <rect x="404" y="132" width="568" height="354" rx="14" fill="#12161d" stroke="#3c4657" stroke-width="2.5"/>
+    <rect x="418" y="146" width="540" height="320" rx="6" fill="url(#screenBg)"/>
+    <!-- Geometric Gaming Wallpaper -->
+    <polygon points="418,466 610,200 785,466" fill="#4f46e5" opacity="0.42"/>
+    <polygon points="560,466 790,165 958,390 958,466" fill="#06b6d4" opacity="0.35"/>
+    <polygon points="418,280 650,146 720,310" fill="#ec4899" opacity="0.24"/>
+    <line x1="490" y1="466" x2="730" y2="146" stroke="#67e8f9" stroke-width="1.5" opacity="0.55"/>
+    <line x1="650" y1="466" x2="910" y2="190" stroke="#c084fc" stroke-width="1.5" opacity="0.5"/>
+    <!-- Webcam dot -->
+    <circle cx="688" cy="139" r="3" fill="#334155"/>
+    <circle cx="688" cy="139" r="1.2" fill="#38bdf8"/>
+  </g>
+
+  <!-- Hinge -->
+  <rect x="448" y="484" width="480" height="10" rx="3" fill="#0f131a"/>
+
+  <!-- Base Deck Perspective -->
+  <polygon points="404,492 972,492 1068,582 308,582" fill="url(#chassis)" stroke="#475569" stroke-width="1.5"/>
+  <!-- Front Lip & RGB Underglow -->
+  <path d="M308,582 L1068,582 L1056,596 L320,596 Z" fill="#0f141c"/>
+  <rect x="360" y="592" width="656" height="4" rx="2" fill="url(#rgbGlow)"/>
+
+  <!-- RGB Keyboard Well -->
+  <polygon points="432,503 944,503 996,552 380,552" fill="#0c1017" stroke="url(#rgbGlow)" stroke-width="1.6"/>
+  <!-- Key Rows -->
+  <g stroke="#1e293b" stroke-width="1.2" opacity="0.92">
+    <line x1="422" y1="514" x2="954" y2="514" stroke="#22d3ee" stroke-opacity="0.5"/>
+    <line x1="410" y1="526" x2="966" y2="526" stroke="#818cf8" stroke-opacity="0.5"/>
+    <line x1="398" y1="539" x2="978" y2="539" stroke="#f472b6" stroke-opacity="0.5"/>
+  </g>
+  <!-- Trackpad -->
+  <polygon points="610,557 766,557 780,577 596,577" fill="#181f2b" stroke="#334155" stroke-width="1"/>
+</svg>

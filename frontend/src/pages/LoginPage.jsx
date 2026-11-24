@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { login } from "../services/authService";
+import { persistAuthTokenAndRole } from "../services/authStorage";
 import soranoLogo from "../assets/sorano-logo.png";
 import "./LoginPage.css";
 
@@ -21,9 +22,7 @@ function LoginPage({ onLogin, sessionExpired = false }) {
         return;
       }
 
-      localStorage.setItem("token", response.access_token);
-
-      localStorage.setItem("role", response.role);
+      persistAuthTokenAndRole(response.access_token, response.role);
 
       onLogin();
     } catch (error) {
