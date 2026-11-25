@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { getStoredToken } from "../services/authStorage";
 import {
   getDashboardData,
   runAssistantFeature,
@@ -17,7 +19,7 @@ import OrdersTab from "../components/OrdersTab";
 // import OrdersByCustomerTab from "../components/OrdersByCustomerTab";
 import CustomersTab from "../components/CustomersTab";
 import DashboardTab from "../components/DashboardTab";
-import { createTicket } from "../services/ticketService";
+import { createTicket, getTickets } from "../services/ticketService";
 import soranoLogo from "../assets/sorano-logo.png";
 import "./CopilotPage.css";
 
@@ -253,7 +255,9 @@ function CopilotPage({ onLogout }) {
   const [assistantCustomerId, setAssistantCustomerId] = useState("");
   const [assistantCustomers, setAssistantCustomers] = useState([]);
   const [assistantCustomerLoading, setAssistantCustomerLoading] =
-    useState(false);
+    useState(true);
+  const [assistantTickets, setAssistantTickets] = useState([]);
+  const [ticketSummaryError, setTicketSummaryError] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantResponse, setAssistantResponse] = useState("");
   const [assistantError, setAssistantError] = useState("");
@@ -261,19 +265,46 @@ function CopilotPage({ onLogout }) {
   const [ticketCreateLoading, setTicketCreateLoading] = useState(false);
   const [ticketCreated, setTicketCreated] = useState(null);
 
-  const token = localStorage.getItem("token");
+  const token = getStoredToken();
+
+  const normalizeTicketInput = (rawValue) => {
+    const trimmed = (rawValue || "").trim().toUpperCase();
+    if (!trimmed) {
+      return "";
+    }
+    if (/^\d+$/.test(trimmed)) {
+      return `TKT-${trimmed.padStart(3, "0")}`;
+    }
+    return trimmed;
+  };
 
   // Fetch AI support analysis for the selected ticket and update the dashboard view.
-  const loadDashboard = async () => {
+  const loadDashboard = async (overrideNumber) => {
+    const targetInput =
+      typeof overrideNumber === "string" ? overrideNumber : ticketNumber;
+    const normalizedTicket = normalizeTicketInput(targetInput);
+    if (!normalizedTicket) {
+      setTicketSummaryError(
+        "Enter or select a ticket number first (for example, TKT-001).",
+      );
+      return;
+    }
+
     try {
       setLoading(true);
-      const result = await getDashboardData(ticketNumber, token);
-      console.log("Dashboard Response", result);
+      setTicketSummaryError("");
+      setTicketNumber(normalizedTicket);
+      const result = await getDashboardData(normalizedTicket, token);
       setDashboard(result);
     } catch (error) {
       console.error(error);
       if (error.response?.status !== 401) {
-        alert("Failed to load dashboard");
+        setDashboard(null);
+        setTicketSummaryError(
+          error.response?.status === 404
+            ? `Ticket ${normalizedTicket} was not found. Please check the ticket number and try again.`
+            : "Unable to generate ticket summary right now. Please try again.",
+        );
       }
     } finally {
       setLoading(false);
@@ -282,6 +313,7 @@ function CopilotPage({ onLogout }) {
 
   const clearTicketSummary = () => {
     setTicketNumber("");
+    setTicketSummaryError("");
     setDashboard(null);
   };
 
@@ -330,6 +362,39 @@ function CopilotPage({ onLogout }) {
     };
   }, [token]);
 
+  // Preload customer and ticket directories so Order Lookup, Create Ticket,
+  // and Ticket Summary dropdowns are immediately populated on first visit.
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    let isCurrent = true;
+
+    const loadAssistantDirectories = async () => {
+      try {
+        const [customersData, ticketsData] = await Promise.all([
+          getCustomers(token),
+          getTickets(token).catch(() => []),
+        ]);
+        if (isCurrent) {
+          setAssistantCustomers(Array.isArray(customersData) ? customersData : []);
+          setAssistantTickets(Array.isArray(ticketsData) ? ticketsData : []);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (isCurrent) {
+          setAssistantCustomerLoading(false);
+        }
+      }
+    };
+
+    loadAssistantDirectories();
+    return () => {
+      isCurrent = false;
+    };
+  }, [token]);
+
   const handleDashboardTicketFilter = (status) => {
     setTicketStatusFilter(status || "");
     setActiveTab("tickets");
@@ -339,6 +404,7 @@ function CopilotPage({ onLogout }) {
     setTicketNumber(number);
     setAssistantFeature("ticket_summary");
     setActiveTab("copilot");
+    loadDashboard(number);
   };
 
   const handleDashboardViewOrder = (orderNumber) => {
@@ -500,6 +566,10 @@ function CopilotPage({ onLogout }) {
       setTicketCreated(created);
       setTicketPreview(null);
       setAssistantQuestion("");
+      const updatedTickets = await getTickets(token).catch(() => null);
+      if (Array.isArray(updatedTickets)) {
+        setAssistantTickets(updatedTickets);
+      }
       await loadOverview();
     } catch (error) {
       console.error(error);
@@ -613,6 +683,22 @@ function CopilotPage({ onLogout }) {
             Customers
           </button>
         </li>
+        <li className="nav-item ms-auto d-flex align-items-center gap-2 py-1">
+          <Link
+            to="/admin"
+            className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+          >
+            <i className="bi bi-speedometer2" aria-hidden="true"></i>
+            Admin Dashboard
+          </Link>
+          <Link
+            to="/"
+            className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+          >
+            <i className="bi bi-shop" aria-hidden="true"></i>
+            Storefront
+          </Link>
+        </li>
         {/* <li className="nav-item">
           <button
             className={`nav-link ${
@@ -714,17 +800,71 @@ function CopilotPage({ onLogout }) {
                     </p>
                   </div>
                 </div>
+                {assistantTickets.length > 0 && (
+                  <div className="assistant-tool-field mb-3">
+                    <label
+                      className="form-label"
+                      htmlFor="ticket-summary-select"
+                    >
+                      Quick-select an existing ticket
+                    </label>
+                    <select
+                      id="ticket-summary-select"
+                      className="form-select"
+                      value={
+                        assistantTickets.some(
+                          (t) => t.ticket_number === ticketNumber,
+                        )
+                          ? ticketNumber
+                          : ""
+                      }
+                      onChange={(event) => {
+                        const selected = event.target.value;
+                        setTicketNumber(selected);
+                        setTicketSummaryError("");
+                        if (selected) {
+                          loadDashboard(selected);
+                        }
+                      }}
+                    >
+                      <option value="">
+                        Choose from {assistantTickets.length} tickets...
+                      </option>
+                      {assistantTickets.map((t) => (
+                        <option key={t.id} value={t.ticket_number}>
+                          {t.ticket_number} — {t.subject} ({t.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="assistant-form ticket-summary-form">
                   <input
                     type="text"
                     className="form-control"
                     placeholder="Enter Ticket Number (e.g. TKT-001)"
                     value={ticketNumber}
-                    onChange={(event) => setTicketNumber(event.target.value)}
+                    onChange={(event) => {
+                      setTicketNumber(event.target.value);
+                      if (ticketSummaryError) {
+                        setTicketSummaryError("");
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        loadDashboard();
+                      }
+                    }}
                   />
-                  <button className="btn btn-primary" onClick={loadDashboard}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => loadDashboard()}
+                    disabled={loading}
+                    type="button"
+                  >
                     <i className="bi bi-stars" aria-hidden="true"></i>
-                    Analyze Ticket
+                    {loading ? "Analyzing..." : "Analyze Ticket"}
                   </button>
                   <button
                     className="btn btn-outline-secondary assistant-reset-button"
@@ -740,9 +880,14 @@ function CopilotPage({ onLogout }) {
                   </button>
                   <span className="ticket-summary-ai-label">
                     <i className="bi bi-stars" aria-hidden="true"></i>
-                    AI summary generated by Ollama using available ticket data
+                    AI summary grounded in live ticket, order, and customer data
                   </span>
                 </div>
+                {ticketSummaryError && (
+                  <div className="alert alert-warning mt-3 mb-0" role="alert">
+                    {ticketSummaryError}
+                  </div>
+                )}
               </section>
             ) : (
               <section
@@ -814,7 +959,11 @@ function CopilotPage({ onLogout }) {
                           key={customer.customer_id}
                           value={customer.customer_id}
                         >
-                          {customer.username}
+                          {customer.full_name &&
+                          customer.full_name.toLowerCase() !==
+                            customer.username.toLowerCase()
+                            ? `${customer.username} (${customer.full_name})`
+                            : `${customer.username}${customer.email ? ` — ${customer.email}` : ""}`}
                         </option>
                       ))}
                     </select>

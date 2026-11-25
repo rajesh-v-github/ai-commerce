@@ -2,13 +2,82 @@ import json
 import re
 from decimal import Decimal
 
+import httpx
+
 from app.models.order import Order
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.models.ticket_message import TicketMessage
 from app.models.ticket_status_history import TicketStatusHistory
-from app.services.ollama_service import ask_llm
+from app.services.ollama_service import AIServiceUnavailableError, ask_llm
 from app.models.product import Product
+
+LLM_UNAVAILABLE_ERRORS = (
+    ConnectionError,
+    OSError,
+    TimeoutError,
+    AIServiceUnavailableError,
+    httpx.HTTPError,
+)
+
+
+def _fallback_executive_summary_fields(ticket, messages, recommended_action: str) -> dict:
+    customer_messages = [
+        m.message.strip()
+        for m in (messages or [])
+        if getattr(m, "user", None)
+        and getattr(m.user, "role", "") == "customer"
+        and (m.message or "").strip()
+    ]
+    issue_summary = (
+        f"{ticket.subject} — {ticket.description.strip()}"
+        if getattr(ticket, "description", None) and ticket.description.strip()
+        else ticket.subject
+    )
+    status_descriptions = {
+        "OPEN": "OPEN — Received and awaiting support review.",
+        "IN_PROGRESS": "IN_PROGRESS — Active investigation underway by support.",
+        "RESOLVED": "RESOLVED — Resolution shared; awaiting final customer confirmation.",
+        "CLOSED": "CLOSED — Ticket closed with no pending actions.",
+    }
+    status_key = (ticket.status or "OPEN").upper()
+    return {
+        "issue_summary": issue_summary,
+        "current_status": status_descriptions.get(status_key, ticket.status or "OPEN"),
+        "key_customer_concern": (
+            customer_messages[-1]
+            if customer_messages
+            else (getattr(ticket, "description", None) or ticket.subject)
+        ),
+        "recommended_next_action": recommended_action,
+    }
+
+
+def _fallback_draft_response_text(ticket) -> str:
+    ticket_ref = getattr(ticket, "ticket_number", None) or f"Ticket #{ticket.id}"
+    status_key = (ticket.status or "OPEN").upper()
+    if status_key == "RESOLVED":
+        return (
+            f"Thank you for reaching out regarding '{ticket.subject}' ({ticket_ref}). "
+            "Our records indicate that this ticket is currently marked as RESOLVED. "
+            "Please let us know if everything is working as expected or if you need any additional assistance."
+        )
+    if status_key == "IN_PROGRESS":
+        return (
+            f"Thank you for contacting us regarding '{ticket.subject}' ({ticket_ref}). "
+            "Your request is currently IN_PROGRESS and under active investigation by our support team. "
+            "Specific resolution details are not yet available, and we will follow up with an update as soon as our review is complete."
+        )
+    if status_key == "OPEN":
+        return (
+            f"Thank you for contacting support regarding '{ticket.subject}' ({ticket_ref}). "
+            "We have received your request and your ticket is currently OPEN awaiting investigation. "
+            "Please share any relevant order number or additional context if available, and we will update you shortly."
+        )
+    return (
+        f"Thank you for reaching out regarding '{ticket.subject}' ({ticket_ref}). "
+        f"This ticket is currently marked as {status_key}. Please reply if you require further assistance."
+    )
 
 
 def generate_executive_summary(db, ticket_id):
@@ -78,19 +147,16 @@ def generate_executive_summary(db, ticket_id):
         - No code blocks.
         """
 
-    ai_summary = ask_llm(prompt)
-
-    ai_summary = ai_summary.strip().strip('"')
-
+    fallback_fields = _fallback_executive_summary_fields(
+        ticket, summary["messages"], recommendation["recommended_action"]
+    )
     try:
+        ai_summary = ask_llm(prompt).strip().strip('"')
         parsed = json.loads(ai_summary)
+    except LLM_UNAVAILABLE_ERRORS:
+        parsed = fallback_fields
     except Exception:
-        parsed = {
-            "issue_summary": "",
-            "current_status": "",
-            "key_customer_concern": "",
-            "recommended_next_action": recommendation["recommended_action"],
-        }
+        parsed = fallback_fields
 
     return {
         "ticket_id": ticket.id,
@@ -98,10 +164,16 @@ def generate_executive_summary(db, ticket_id):
         "subject": ticket.subject,
         "status": ticket.status,
         "priority": recommendation["priority"],
-        "issue_summary": parsed["issue_summary"],
-        "current_status": parsed["current_status"],
-        "key_customer_concern": parsed["key_customer_concern"],
-        "recommended_next_action": parsed["recommended_next_action"],
+        "issue_summary": parsed.get("issue_summary") or fallback_fields["issue_summary"],
+        "current_status": parsed.get("current_status") or fallback_fields["current_status"],
+        "key_customer_concern": (
+            parsed.get("key_customer_concern")
+            or fallback_fields["key_customer_concern"]
+        ),
+        "recommended_next_action": (
+            parsed.get("recommended_next_action")
+            or fallback_fields["recommended_next_action"]
+        ),
     }
 
 
@@ -260,8 +332,13 @@ def generate_draft_response(db, ticket_id):
         Generate a professional response that a support representative can send to the customer.
         """
 
-    ai_response = ask_llm(prompt)
-    ai_response = ai_response.strip().strip('"')
+    try:
+        ai_response = ask_llm(prompt).strip().strip('"')
+    except LLM_UNAVAILABLE_ERRORS:
+        ai_response = _fallback_draft_response_text(ticket)
+
+    if not ai_response:
+        ai_response = _fallback_draft_response_text(ticket)
 
     return {
         "subject": ticket.subject,
@@ -424,28 +501,28 @@ def generate_ai_insights(db, ticket_id):
     - No code blocks.
     - No explanation.
     """
-    ai_response = ask_llm(prompt)
-
-    cleaned = ai_response.replace("\n", " ").replace("\r", " ")
-
-    ai_response = cleaned.strip().strip('"')
-
-    print("\n========== RAW OLLAMA RESPONSE ==========")
-    print(ai_response)
-    print("=========================================\n")
+    fallback_exec = _fallback_executive_summary_fields(
+        ticket, summary["messages"], recommendation["recommended_action"]
+    )
+    fallback_draft = _fallback_draft_response_text(ticket)
 
     try:
+        ai_response = ask_llm(prompt)
+        cleaned = ai_response.replace("\n", " ").replace("\r", " ")
+        ai_response = cleaned.strip().strip('"')
         parsed = json.loads(ai_response.strip())
         exec_summary = parsed.get("executive_summary", {})
 
         if not exec_summary.get("issue_summary"):
-            exec_summary["issue_summary"] = ticket.subject
+            exec_summary["issue_summary"] = fallback_exec["issue_summary"]
 
         if not exec_summary.get("current_status"):
-            exec_summary["current_status"] = ticket.status
+            exec_summary["current_status"] = fallback_exec["current_status"]
 
         if not exec_summary.get("key_customer_concern"):
-            exec_summary["key_customer_concern"] = "Customer requested an update."
+            exec_summary["key_customer_concern"] = fallback_exec[
+                "key_customer_concern"
+            ]
 
         if not exec_summary.get("recommended_next_action"):
             exec_summary["recommended_next_action"] = recommendation[
@@ -453,24 +530,20 @@ def generate_ai_insights(db, ticket_id):
             ]
 
         parsed["executive_summary"] = exec_summary
-        print("\n========== PARSED JSON ==========")
-        print(parsed)
-        print("=================================\n")
-
+        if not parsed.get("draft_response"):
+            parsed["draft_response"] = fallback_draft
         return parsed
 
-    except Exception as ex:
-
-        print(f"AI parsing failed: {ex}")
-
+    except LLM_UNAVAILABLE_ERRORS:
         return {
-            "executive_summary": {
-                "issue_summary": "",
-                "current_status": ticket.status,
-                "key_customer_concern": "",
-                "recommended_next_action": recommendation["recommended_action"],
-            },
-            "draft_response": "",
+            "executive_summary": fallback_exec,
+            "draft_response": fallback_draft,
+        }
+    except Exception as ex:
+        print(f"AI parsing failed: {ex}")
+        return {
+            "executive_summary": fallback_exec,
+            "draft_response": fallback_draft,
         }
 
 
@@ -532,7 +605,15 @@ def generate_copilot_answer(
         Return only the answer.
         """
 
-    return ask_llm(prompt)
+    try:
+        return ask_llm(prompt)
+    except LLM_UNAVAILABLE_ERRORS:
+        return (
+            f"Ticket {ticket.ticket_number or ticket.id} ('{ticket.subject}') for "
+            f"{customer['username']} is currently {ticket.status}. "
+            f"Customer has {customer['total_orders']} total order(s) and "
+            f"{customer['open_tickets']} open ticket(s)."
+        )
 
 
 def get_customer_orders(db, customer_id):
@@ -689,7 +770,11 @@ def get_customer_tickets(db, customer_id):
 
 def get_products(db):
 
-    products = db.query(Product).all()
+    products = (
+        db.query(Product)
+        .filter((Product.is_active.is_(None)) | (Product.is_active.is_(True)))
+        .all()
+    )
 
     return [
         {
@@ -707,113 +792,177 @@ def get_products(db):
 PRODUCT_QUERY_STOP_WORDS = {
     "a",
     "all",
+    "also",
     "an",
     "and",
+    "any",
     "are",
+    "as",
+    "at",
     "available",
+    "availability",
     "about",
     "affordable",
-    "best",
-    "at",
     "below",
+    "best",
+    "bought",
     "budget",
+    "buy",
+    "by",
     "can",
+    "catalog",
+    "catalogue",
     "cheap",
     "cheapest",
+    "check",
+    "cm",
+    "current",
+    "currently",
     "customer",
     "details",
     "device",
     "devices",
     "do",
+    "does",
+    "each",
+    "every",
     "expensive",
+    "fetch",
+    "find",
     "for",
+    "from",
+    "gb",
+    "get",
     "give",
     "good",
-    "highest",
-    "how",
+    "got",
+    "has",
+    "have",
+    "here",
     "high",
     "higher",
-    "lowest",
-    "lower",
+    "highest",
+    "how",
+    "hz",
+    "i",
     "in",
-    "information",
-    "is",
-    "item",
-    "items",
-    "k",
-    "least",
-    "less",
-    "least",
-    "expensive",
-    "priced",
-    "list",
-    "looking",
-    "look",
-    "lowest",
-    "maximum",
-    "match",
-    "matching",
-    "gb",
-    "tb",
     "inch",
     "inches",
-    "hz",
+    "info",
+    "information",
+    "into",
+    "inventory",
+    "is",
+    "it",
+    "item",
+    "items",
+    "just",
+    "k",
+    "kind",
+    "kinds",
+    "least",
+    "less",
+    "list",
+    "listing",
+    "look",
+    "looking",
+    "low",
+    "lower",
+    "lowest",
     "mah",
-    "cm",
-    "mm",
+    "match",
+    "matches",
+    "matching",
+    "max",
+    "maximum",
     "me",
+    "minimum",
+    "mm",
     "more",
     "most",
-    "max",
-    "minimum",
-    "maximum",
-    "premium",
+    "my",
     "need",
+    "needs",
     "no",
+    "now",
     "of",
     "on",
+    "only",
     "option",
     "options",
     "or",
+    "our",
+    "out",
     "particularly",
     "please",
+    "premium",
     "price",
-    "purchase",
-    "purchases",
-    "purchasable",
-    "buy",
-    "bought",
+    "priced",
     "product",
     "products",
+    "provide",
+    "purchasable",
+    "purchase",
+    "purchases",
+    "range",
     "recommend",
     "recommendation",
     "recommendations",
     "related",
+    "right",
+    "rs",
     "search",
+    "see",
+    "selection",
+    "share",
+    "shop",
     "show",
+    "sold",
+    "some",
+    "sort",
+    "sorts",
     "stock",
+    "store",
     "suggest",
     "suitable",
-    "valuable",
+    "tb",
+    "tell",
     "than",
+    "that",
     "the",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
     "to",
+    "type",
+    "types",
+    "unavailable",
     "under",
     "up",
+    "us",
+    "valuable",
+    "view",
     "want",
+    "wants",
+    "we",
     "what",
     "where",
     "which",
-    "within",
     "with",
+    "within",
     "would",
     "you",
+    "your",
 }
 PRODUCT_TYPE_TERMS = {
     "backpack",
     "bag",
     "case",
+    "display",
     "earbud",
+    "earphone",
     "headphone",
     "headset",
     "hub",
@@ -821,6 +970,7 @@ PRODUCT_TYPE_TERMS = {
     "laptop",
     "monitor",
     "mouse",
+    "notebook",
     "speaker",
     "watch",
     "webcam",
@@ -873,7 +1023,20 @@ def _normalize_product_terms(text):
 
 
 def _product_question_terms(question):
-    return _normalize_product_terms(question) - PRODUCT_QUERY_STOP_WORDS
+    scrubbed = re.sub(
+        r"\b(?:out\s+of\s+stock|in\s+stock|sold\s+out|list\s+out)\b",
+        " ",
+        question,
+        flags=re.IGNORECASE,
+    )
+    scrubbed = re.sub(
+        r"\b(?:under|below|less than|up to|no more than|at most|max(?:imum)?(?: budget)?)\s*"
+        r"(?:₹|rs\.?\s*)?[\d,]+(?:\.\d+)?\s*[kK]?",
+        " ",
+        scrubbed,
+        flags=re.IGNORECASE,
+    )
+    return _normalize_product_terms(scrubbed) - PRODUCT_QUERY_STOP_WORDS
 
 
 def _product_term_matches(term, product_terms):
@@ -887,8 +1050,18 @@ def _product_term_matches(term, product_terms):
 
 
 def _filter_relevant_products(products, question, *, recommendation=False):
+    out_of_stock_requested = bool(
+        re.search(r"\b(?:out\s+of\s+stock|sold\s+out|unavailable)\b", question, re.I)
+    )
+    availability_requested = not out_of_stock_requested and bool(
+        re.search(r"\b(?:in\s+stock|available|availability)\b", question, re.I)
+    )
     terms = _product_question_terms(question)
     if not terms:
+        if out_of_stock_requested:
+            return [p for p in products if (p.get("stock") or 0) <= 0]
+        if availability_requested:
+            return [p for p in products if (p.get("stock") or 0) > 0]
         return products
 
     term_groups = [
@@ -899,14 +1072,13 @@ def _filter_relevant_products(products, question, *, recommendation=False):
         group for term, group in zip(terms, term_groups)
         if term in PRODUCT_TYPE_TERMS
     ]
-    accessory_requested = bool(
+    general_accessory_requested = bool(
         {"accessory", "accessories", "add-on", "addons"} & set(
             re.findall(r"[a-z-]+", question.casefold())
         )
     )
-    availability_requested = bool(
-        re.search(r"\b(?:in stock|available|availability)\b", question, re.I)
-    )
+    requested_accessory_terms = terms & PRODUCT_ACCESSORY_TERMS
+
     max_price_match = re.search(
         r"\b(?:under|below|less than|up to|no more than|at most|max(?:imum)?(?: budget)?)\s*"
         r"(?:₹|rs\.?\s*)?([\d,]+(?:\.\d+)?\s*[kK]?)",
@@ -921,12 +1093,20 @@ def _filter_relevant_products(products, question, *, recommendation=False):
 
     relevant = []
     for product in products:
-        name_category_terms = _normalize_product_terms(
-            f"{product['name']} {product.get('category') or ''}"
+        product_name_terms = _normalize_product_terms(product["name"])
+        category_terms = _normalize_product_terms(product.get("category") or "")
+        desc_terms = _normalize_product_terms(product.get("description") or "")
+        explicit_name_types = product_name_terms & PRODUCT_TYPE_TERMS
+
+        # Prevent compound categories (e.g. "Keyboards & Mice") from bleeding one
+        # hardware type ("keyboard") onto a product explicitly named as another ("Wireless Mouse").
+        effective_category_terms = (
+            category_terms - (PRODUCT_TYPE_TERMS - explicit_name_types)
+            if explicit_name_types
+            else category_terms
         )
-        all_product_terms = name_category_terms | _normalize_product_terms(
-            product.get("description") or ""
-        )
+        name_category_terms = product_name_terms | effective_category_terms
+        all_product_terms = name_category_terms | desc_terms
 
         if not all(
             _product_term_matches(term, all_product_terms)
@@ -934,22 +1114,29 @@ def _filter_relevant_products(products, question, *, recommendation=False):
         ):
             continue
         if any(
-            not _product_term_matches(next(iter(group)), name_category_terms)
+            not (
+                bool(group & product_name_terms)
+                if explicit_name_types
+                else _product_term_matches(next(iter(group)), name_category_terms)
+            )
             for group in type_groups
         ):
             continue
 
-        product_name_terms = _normalize_product_terms(product["name"])
-        is_accessory = bool(product_name_terms & PRODUCT_ACCESSORY_TERMS)
+        unrequested_accessories = (
+            product_name_terms & PRODUCT_ACCESSORY_TERMS
+        ) - requested_accessory_terms
         if (
-            is_accessory
-            and not accessory_requested
+            unrequested_accessories
+            and not general_accessory_requested
             and type_groups
         ):
             continue
+        if out_of_stock_requested and (product.get("stock") or 0) > 0:
+            continue
         if availability_requested and (product.get("stock") or 0) <= 0:
             continue
-        if recommendation and max_price is not None:
+        if max_price is not None:
             if product.get("price") is None or product["price"] > max_price:
                 continue
         relevant.append(product)
@@ -1007,14 +1194,82 @@ def _order_recommendation_products(products, question):
     return unique_products
 
 
-def _format_recommendation_answer(answer, products):
+def _format_lookup_products_list(products):
+    return "\n\n".join(
+        f"Product: {p['name']}\n"
+        f"Category: {p.get('category') or 'Not specified'}\n"
+        f"Price: ₹{p['price']}\n"
+        f"Stock: {p['stock']}\n"
+        f"Description: {p.get('description') or 'Not specified'}"
+        for p in products
+    )
+
+
+def _is_exhaustive_list_query(question: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:list(?:\s+out)?|give\s+me\s+all|show(?:\s+me)?\s+all|all\s+[\w\s]+available)\b",
+            question or "",
+            re.IGNORECASE,
+        )
+    )
+
+
+def _format_lookup_answer(answer: str, products: list[dict], question: str = "") -> str:
+    cleaned_answer = answer.replace("```json", "").replace("```", "").strip()
+    if not cleaned_answer:
+        return _format_lookup_products_list(products)
+
+    matched = []
+    seen = set()
+    for product in products:
+        pattern = re.compile(
+            rf"(?<![\w]){re.escape(product['name'])}(?![\w])",
+            re.IGNORECASE,
+        )
+        if pattern.search(cleaned_answer):
+            key = product["name"].casefold()
+            if key not in seen:
+                seen.add(key)
+                matched.append(product)
+
+    # If the LLM falsely claimed nothing matched despite backend relevance verification
+    if not matched and re.search(
+        r"\bno\s+(?:matching\s+)?products?\b", cleaned_answer, re.IGNORECASE
+    ):
+        return _format_lookup_products_list(products)
+
+    if not matched:
+        return cleaned_answer
+
+    # If the user asked to list all matching items and LLM mentioned at least one
+    # catalog item, ensure none of the verified shortlisted items were truncated/omitted
+    # and strip any hallucinated items outside the shortlist.
+    if _is_exhaustive_list_query(question):
+        return _format_lookup_products_list(products)
+
+    # If the LLM already used a concise custom format (e.g. single-line summary),
+    # ensure any multi-field output uses exact verified catalog figures.
+    if "Category:" in cleaned_answer or "Price:" in cleaned_answer or len(matched) > 1:
+        return _format_lookup_products_list(matched)
+
+    return cleaned_answer
+
+
+def _format_recommendation_answer(answer, products, question: str = ""):
     cleaned_answer = answer.replace("```json", "").replace("```", "").strip()
     recommendations = None
 
+    parsed_answer = None
     try:
         parsed_answer = json.loads(cleaned_answer)
     except json.JSONDecodeError:
-        parsed_answer = None
+        json_match = re.search(r"\{[\s\S]*\}", cleaned_answer)
+        if json_match:
+            try:
+                parsed_answer = json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                parsed_answer = None
 
     if isinstance(parsed_answer, dict):
         recommendations = parsed_answer.get("recommendations")
@@ -1022,7 +1277,16 @@ def _format_recommendation_answer(answer, products):
         recommendations = parsed_answer
 
     if isinstance(recommendations, list) and not recommendations:
-        return "No products in the catalog match those requirements."
+        if products and _is_exhaustive_list_query(question):
+            recommendations = [
+                {
+                    "product": p["name"],
+                    "reason": p.get("description") or "Matches the stated requirements.",
+                }
+                for p in products
+            ]
+        else:
+            return "No products in the catalog match those requirements."
 
     product_by_name = {
         product["name"].strip().casefold(): product for product in products
@@ -1056,7 +1320,16 @@ def _format_recommendation_answer(answer, products):
                 )
 
     if not selected:
-        return cleaned_answer
+        if products and re.search(
+            r"\bno\s+(?:matching\s+)?products?\b", cleaned_answer, re.IGNORECASE
+        ):
+            for p in products:
+                selected[p["name"].casefold()] = (
+                    p,
+                    p.get("description") or "Matches the stated requirements.",
+                )
+        else:
+            return cleaned_answer
 
     formatted = []
     for product in products:
@@ -1111,7 +1384,12 @@ def generate_product_lookup(db, question):
         3. Interpret common equivalent terms consistently (for example, wireless and
            Bluetooth; laptop and notebook), but do not treat unrelated accessories
            as a match for the primary product type.
-        4. Do not return the full catalog just because the question uses a broad term.
+        4. When a category shares multiple hardware types (such as "Keyboards & Mice"),
+           verify the product's own name so a mouse is never returned for a keyboard
+           query (and vice versa).
+        5. Treat conversational phrasing such as "list out", "give me all", or
+           "show available" as a request to list every matching shortlisted product.
+        6. Do not return the full catalog just because the question uses a broad term.
 
         Output rules:
         - Use only the available product catalog data; never invent product details.
@@ -1130,11 +1408,14 @@ def generate_product_lookup(db, question):
         Answer the support executive's question.
         """
 
-    answer = ask_llm(prompt)
+    try:
+        answer = ask_llm(prompt)
+        if answer and answer.strip():
+            return _format_lookup_answer(answer, products, question)
+    except LLM_UNAVAILABLE_ERRORS:
+        pass
 
-    answer = answer.replace("```json", "").replace("```", "").strip()
-
-    return answer
+    return _format_lookup_products_list(products)
 
 
 def generate_product_recommendation(db, question):
@@ -1177,10 +1458,12 @@ def generate_product_recommendation(db, question):
         3. Recommend only listed products that satisfy the requested product type
            and every stated constraint. Do not add a product from the wider catalog.
         4. Compare actual product names and categories, using descriptions to verify
-           features; do not broaden a product-type match to unrelated accessories.
+           features; do not broaden a product-type match to unrelated accessories,
+           and in shared categories like "Keyboards & Mice" match the exact product type.
         5. Interpret common equivalents consistently (for example, wireless and
            Bluetooth; laptop and notebook), without treating unrelated items as
-           equivalent products.
+           equivalent products. Treat "list out" or "show all" requests as asking
+           for all qualifying recommendations from the shortlisted set.
         6. If no listed product clearly qualifies, say so instead of broadening the
            request.
         7. If the requirement asks for a lower, lowest, cheaper, or least expensive
@@ -1201,9 +1484,28 @@ def generate_product_recommendation(db, question):
         Provide recommendations.
         """
 
-    answer = ask_llm(prompt)
-
-    return _format_recommendation_answer(answer, products)
+    try:
+        answer = ask_llm(prompt)
+        return _format_recommendation_answer(answer, products, question)
+    except LLM_UNAVAILABLE_ERRORS:
+        in_stock = [p for p in products if int(p.get("stock") or 0) > 0]
+        candidates = in_stock if in_stock else products
+        fallback_payload = {
+            "recommendations": [
+                {
+                    "product": p["name"],
+                    "reason": (
+                        f"{p.get('category') or 'Catalog match'} — "
+                        f"{p.get('description') or 'Matches your stated criteria'} "
+                        f"(₹{p['price']}, {p['stock']} in stock)."
+                    ),
+                }
+                for p in candidates
+            ]
+        }
+        return _format_recommendation_answer(
+            json.dumps(fallback_payload), products, question
+        )
 
 
 def generate_order_lookup(db, customer_id, question):
@@ -1416,9 +1718,57 @@ def generate_order_lookup(db, customer_id, question):
             - Include only orders relevant to the question.
             """
 
-    answer = ask_llm(prompt)
+    try:
+        answer = ask_llm(prompt)
+        return answer.replace("```", "").strip()
+    except LLM_UNAVAILABLE_ERRORS:
+        q_lower = question.lower()
+        explicit_ord = re.findall(r"\bord-[a-z0-9-]+\b", q_lower)
+        if explicit_ord:
+            wanted = {code.upper() for code in explicit_ord}
+            matched = [
+                o for o in orders if (o.order_number or "").upper() in wanted
+            ]
+            if not matched:
+                return "No matching order number was found for this customer."
+            selected_orders = matched
+        elif re.search(r"\b(latest|recent|newest|last)\b", q_lower):
+            selected_orders = [orders[0]]
+        elif re.search(r"\b(oldest|earliest|first)\b", q_lower):
+            selected_orders = [orders[-1]]
+        else:
+            selected_orders = orders
 
-    return answer.replace("```", "").strip()
+        if len(selected_orders) == 1:
+            o = selected_orders[0]
+            amt = Decimal(str(o.total_amount or 0))
+            item_summary = ", ".join(
+                f"{it.product_name} (x{it.quantity})"
+                for it in (getattr(o, "items", None) or [])
+                if getattr(it, "product_name", None)
+            )
+            extra = f"\nItems: {item_summary}" if item_summary else ""
+            return (
+                f"Order: {o.order_number}\n"
+                f"Status: {o.status}\n"
+                f"Amount: ₹{amt:,.2f}{extra}"
+            )
+
+        lines = []
+        for idx, o in enumerate(selected_orders, start=1):
+            amt = Decimal(str(o.total_amount or 0))
+            item_summary = ", ".join(
+                f"{it.product_name} (x{it.quantity})"
+                for it in (getattr(o, "items", None) or [])
+                if getattr(it, "product_name", None)
+            )
+            extra = f"\nItems: {item_summary}" if item_summary else ""
+            lines.append(
+                f"Order {idx}: {o.order_number}\n"
+                f"Status: {o.status}\n"
+                f"Amount: ₹{amt:,.2f}{extra}"
+            )
+        return "\n\n".join(lines)
 
 
 def generate_ticket_details(question):
@@ -1445,16 +1795,32 @@ def generate_ticket_details(question):
             {question}
             """
 
-    response = ask_llm(prompt)
-
-    response = response.replace("```json", "").replace("```", "").strip()
-
     try:
+        response = ask_llm(prompt)
+        response = response.replace("```json", "").replace("```", "").strip()
         return json.loads(response)
-
     except Exception:
+        cleaned_q = (question or "").strip()
+        first_sentence = re.split(r"[.!?\n]", cleaned_q)[0].strip()
+        subject = (
+            (first_sentence[:68].rstrip() + "...")
+            if len(first_sentence) > 70
+            else (first_sentence or "General Support Request")
+        )
+        lowered = cleaned_q.lower()
+        if any(w in lowered for w in ("fraud", "unauthorized", "escalate", "urgent")):
+            priority = "CRITICAL"
+        elif any(
+            w in lowered
+            for w in ("damaged", "broken", "wrong", "missing", "refund", "delayed", "failed")
+        ):
+            priority = "HIGH"
+        elif any(w in lowered for w in ("question", "how to", "inquiry")):
+            priority = "LOW"
+        else:
+            priority = "MEDIUM"
         return {
-            "subject": "General Support Request",
-            "description": question,
-            "priority": "MEDIUM",
+            "subject": subject,
+            "description": cleaned_q or "Customer support request",
+            "priority": priority,
         }

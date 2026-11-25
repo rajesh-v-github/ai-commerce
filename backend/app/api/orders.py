@@ -1,20 +1,14 @@
-from fastapi import APIRouter
-from fastapi import Depends
-from fastapi import HTTPException
-
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database.db import get_db
-from app.schemas.order import CheckoutRequest
-from app.schemas.order import OrderDetailsResponse
-from app.services.order_service import OrderService
 
-from app.api.dependencies import get_current_user
-from app.models.user import User
+from app.agents.tools import get_customer_orders
+from app.api.dependencies import get_current_support_user, get_current_user
+from app.database.db import get_db
 from app.models.order import Order
 from app.models.product import Product
-from app.agents.tools import get_customer_orders
-from app.api.dependencies import get_current_support_user
 from app.models.user import User
+from app.schemas.order import CheckoutRequest, OrderDetailsResponse
+from app.services.order_service import OrderService
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -23,7 +17,11 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 def get_customer_orders_api(
     customer_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "support" and current_user.id != customer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     orders = get_customer_orders(db, customer_id)
 
     return [
@@ -43,15 +41,35 @@ def checkout(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-
     return OrderService.create_order(db, request, current_user)
 
 
 @router.get("/my")
 def get_my_orders(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return db.query(Order).filter(Order.customer_id == current_user.id).all()
+    orders = (
+        db.query(Order)
+        .filter(Order.customer_id == current_user.id)
+        .order_by(Order.id.desc())
+        .all()
+    )
+    return [OrderService.serialize_order_full(db, order) for order in orders]
+
+
+@router.get("/my/{order_number}")
+def get_my_order_detail(
+    order_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    order = db.query(Order).filter(Order.order_number == order_number).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if current_user.role != "support" and order.customer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return OrderService.serialize_order_full(db, order)
 
 
 @router.get("/")
@@ -80,7 +98,6 @@ def get_customer_orders_by_username(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_support_user),
 ):
-
     customer = db.query(User).filter(User.username == username).first()
 
     if not customer:
