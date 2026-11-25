@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1376 768" width="1376" height="768">
+  <defs>
+    <linearGradient id="bgWall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#748190"/>
+      <stop offset="55%" stop-color="#8d9aa8"/>
+      <stop offset="100%" stop-color="#657180"/>
+    </linearGradient>
+    <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c0cad5"/>
+      <stop offset="100%" stop-color="#e1e8ef"/>
+    </linearGradient>
+    <linearGradient id="alumTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#374151"/>
+      <stop offset="50%" stop-color="#1f2937"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="alumSide" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="50%" stop-color="#273244"/>
+      <stop offset="100%" stop-color="#0b0f19"/>
+    </linearGradient>
+    <radialGradient id="shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0f172a" stop-opacity="0.52"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1376" height="480" fill="url(#bgWall)"/>
+  <rect y="480" width="1376" height="288" fill="url(#deskTop)"/>
+  <ellipse cx="688" cy="575" rx="340" ry="42" fill="url(#shadow)"/>
+
+  <!-- Isometric High-Capacity 20000mAh Power Bank -->
+  <g>
+    <!-- Top Deck -->
+    <polygon points="340,395 790,265 1036,365 586,495" fill="url(#alumTop)" stroke="#64748b" stroke-width="2"/>
+    <!-- Left Front Port Face -->
+    <polygon points="340,395 586,495 586,568 340,468" fill="#0f172a" stroke="#475569" stroke-width="1.8"/>
+    <!-- Right Long Anodized Side -->
+    <polygon points="586,495 1036,365 1036,438 586,568" fill="url(#alumSide)" stroke="#334155" stroke-width="1.8"/>
+
+    <!-- Smart LED Percentage Display Window on Top -->
+    <polygon points="455,392 565,360 628,386 518,418" fill="#090d16" stroke="#334155" stroke-width="1.5"/>
+    <text x="542" y="397" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="24" font-weight="700" transform="rotate(-16 542 397)">100%</text>
+    <circle cx="594" cy="382" r="4" fill="#10b981"/>
+
+    <!-- USB-C PD & USB-A Fast Charge Ports on Front Face -->
+    <!-- USB-C 1 -->
+    <rect x="385" y="446" width="38" height="14" rx="7" transform="skewY(22)" fill="#020617" stroke="#94a3b8" stroke-width="1.8"/>
+    <!-- USB-C 2 -->
+    <rect x="442" y="446" width="38" height="14" rx="7" transform="skewY(22)" fill="#020617" stroke="#38bdf8" stroke-width="1.8"/>
+    <!-- USB-A -->
+    <rect x="502" y="443" width="48" height="18" rx="3" transform="skewY(22)" fill="#020617" stroke="#94a3b8" stroke-width="1.8"/>
+    <rect x="510" y="449" width="32" height="5" transform="skewY(22)" fill="#f97316"/>
+
+    <!-- Subtle Capacity Laser Etch -->
+    <text x="815" y="472" text-anchor="middle" fill="#94a3b8" opacity="0.55" font-family="system-ui, sans-serif" font-size="17" font-weight="600" letter-spacing="2" transform="rotate(-16 815 472)">20000 mAh • 65W PD</text>
+  </g>
+</svg>

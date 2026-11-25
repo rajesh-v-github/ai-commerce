@@ -263,3 +263,86 @@ def test_recommendations_use_same_wireless_shortlist(monkeypatch):
     assert "Bluetooth Speaker" in prompts[0]
     assert "Wireless Keyboard" in prompts[0]
     assert "Gaming Mouse" not in prompts[0]
+
+
+def test_list_out_phrasing_and_compound_category_keyboard_vs_mouse(monkeypatch):
+    catalog = [
+        {
+            "name": "Wireless Earbuds",
+            "category": "Audio",
+            "description": "Bluetooth earbuds with noise cancellation",
+            "price": 2499,
+            "stock": 39,
+        },
+        {
+            "name": "Mechanical Keyboard",
+            "category": "Gaming Accessories",
+            "description": "Gaming mechanical keyboard",
+            "price": 3499,
+            "stock": 30,
+        },
+        {
+            "name": "Wireless Keyboard",
+            "category": "Keyboards & Mice",
+            "description": "Wireless office keyboard",
+            "price": 1799,
+            "stock": 35,
+        },
+        {
+            "name": "Wireless Mouse",
+            "category": "Keyboards & Mice",
+            "description": "Office wireless mouse",
+            "price": 999,
+            "stock": 45,
+        },
+    ]
+    monkeypatch.setattr(tools, "get_products", lambda db: catalog)
+
+    # Simulate Ollama returning both keyboards AND accidentally hallucinating Wireless Mouse
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: (
+            "Product: Mechanical Keyboard\nPrice: ₹3499\n\n"
+            "Product: Wireless Keyboard\nPrice: ₹1799\n\n"
+            "Product: Wireless Mouse\nPrice: ₹999"
+        ),
+    )
+    ans_keyboards = tools.generate_product_lookup(None, "give me all keyboards")
+    assert "Product: Mechanical Keyboard" in ans_keyboards
+    assert "Product: Wireless Keyboard" in ans_keyboards
+    assert "Wireless Mouse" not in ans_keyboards
+
+    ans_list_kb = tools.generate_product_lookup(
+        None, "list out all keyboards available"
+    )
+    assert "Product: Mechanical Keyboard" in ans_list_kb
+    assert "Product: Wireless Keyboard" in ans_list_kb
+    assert "Wireless Mouse" not in ans_list_kb
+
+    # Simulate Ollama returning wireless items on "list out wireless products"
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: "Product: Wireless Earbuds\nPrice: ₹2499",
+    )
+    ans_wireless = tools.generate_product_lookup(None, "list out wireless products")
+    assert "Product: Wireless Earbuds" in ans_wireless
+    assert "Product: Wireless Keyboard" in ans_wireless
+    assert "Product: Wireless Mouse" in ans_wireless
+    assert "Mechanical Keyboard" not in ans_wireless
+
+    # Product Recommendations with "list out all wireless products" even if LLM returns empty array
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: '{"recommendations": []}',
+    )
+    rec_wireless = tools.generate_product_recommendation(
+        None, "list out all wireless products"
+    )
+    assert "Product: Wireless Earbuds" in rec_wireless
+    assert "Product: Wireless Keyboard" in rec_wireless
+    assert "Product: Wireless Mouse" in rec_wireless
+    assert "Mechanical Keyboard" not in rec_wireless
+

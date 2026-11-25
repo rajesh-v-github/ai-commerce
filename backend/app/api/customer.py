@@ -1,21 +1,22 @@
-from fastapi import APIRouter
-from fastapi import Depends
-
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database.db import get_db
-from app.models.user import User
-from app.schemas.customer import CustomerSearchRequest
 from app.api.dependencies import get_current_support_user
+from app.database.db import get_db
 from app.models.order import Order
 from app.models.ticket import Ticket
+from app.models.user import User
+from app.schemas.customer import CustomerSearchRequest
 
 router = APIRouter(prefix="/customer", tags=["Customer"])
 
 
 @router.post("/search")
-def search_customer(request: CustomerSearchRequest, db: Session = Depends(get_db)):
-
+def search_customer(
+    request: CustomerSearchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_support_user),
+):
     customer = db.query(User).filter(User.username.ilike(f"%{request.search}%")).first()
 
     if not customer:
@@ -33,17 +34,13 @@ def get_all_customers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_support_user),
 ):
-
     customers = db.query(User).filter(User.role == "customer").all()
 
     results = []
 
     for customer in customers:
-
         order_count = db.query(Order).filter(Order.customer_id == customer.id).count()
-
         ticket_count = db.query(Ticket).filter(Ticket.user_id == customer.id).count()
-
         open_ticket_count = (
             db.query(Ticket)
             .filter(
@@ -57,6 +54,8 @@ def get_all_customers(
             {
                 "customer_id": customer.id,
                 "username": customer.username,
+                "full_name": customer.full_name,
+                "email": customer.email,
                 "role": customer.role,
                 "total_orders": order_count,
                 "total_tickets": ticket_count,
