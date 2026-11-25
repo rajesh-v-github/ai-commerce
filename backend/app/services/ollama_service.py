@@ -1,4 +1,5 @@
 import re
+import textwrap
 import time
 from typing import Any
 
@@ -11,26 +12,89 @@ from app.utils.product_catalog_defaults import resolve_product_defaults
 
 logger = get_logger("ai_commerce.ollama")
 
+SORANOGEAR_ANALYST_SYSTEM_PROMPT = (
+    "You are SoranoGear's senior Commerce & Customer Support AI Analyst. "
+    "Before writing any output, carefully analyze the user's exact intent: "
+    "(1) identify target entities, chronological rank (latest/most recent vs. oldest/first), "
+    "and exact count constraints (such as 'only one', 'top N', or 'all'); "
+    "(2) cross-check every fact strictly against the supplied database records—never invent, "
+    "guess, or extrapolate order numbers, statuses, dates, tracking details, product names, "
+    "prices, stock counts, or specifications; "
+    "(3) exclude any record that violates a stated constraint; and "
+    "(4) produce only the requested output format (valid JSON when JSON is requested, or "
+    "clean plain text without markdown clutter when plain text is requested)."
+)
+
+SORANOGEAR_COPYWRITER_SYSTEM_PROMPT = (
+    "You are SoranoGear's senior e-commerce technology copywriter. "
+    "Write clear, persuasive, strictly factual storefront copy grounded exclusively in "
+    "the supplied product metadata without inventing unsupported technical specifications."
+)
+
 
 class AIServiceUnavailableError(RuntimeError):
     """Raised when Ollama and any configured fallback AI service are unavailable."""
 
 
-def _call_ollama(prompt: str, *, temperature: float = 0.1, num_predict: int = 250) -> str:
-    client = Client(host=settings.OLLAMA_BASE_URL)
-    response = client.chat(
-        model=settings.OLLAMA_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        options={"temperature": temperature, "num_predict": num_predict},
+def _strip_thinking_blocks(raw_text: str) -> str:
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw_text or "", flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
+def _wants_json_output(prompt: str) -> bool:
+    return bool(
+        re.search(
+            r"return\s+only\s+valid\s+json",
+            prompt or "",
+            flags=re.IGNORECASE,
+        )
     )
-    return response.message.content.strip().strip('"')
+
+
+def _call_ollama(
+    prompt: str,
+    *,
+    system_prompt: str = SORANOGEAR_ANALYST_SYSTEM_PROMPT,
+    temperature: float = 0.0,
+    num_predict: int = 650,
+    json_mode: bool | None = None,
+) -> str:
+    clean_prompt = textwrap.dedent(prompt or "").strip()
+    use_json = _wants_json_output(clean_prompt) if json_mode is None else json_mode
+
+    client = Client(host=settings.OLLAMA_BASE_URL)
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": clean_prompt})
+
+    chat_kwargs: dict[str, Any] = {
+        "model": settings.OLLAMA_MODEL,
+        "messages": messages,
+        "options": {
+            "temperature": temperature,
+            "top_p": 0.9,
+            "repeat_penalty": 1.12,
+            "num_ctx": 4096,
+            "num_predict": num_predict,
+        },
+        "keep_alive": "30m",
+    }
+    if use_json:
+        chat_kwargs["format"] = "json"
+
+    response = client.chat(**chat_kwargs)
+    content = _strip_thinking_blocks(response.message.content or "")
+    return content if use_json else content.strip('"')
 
 
 def _call_fallback_provider(
     prompt: str,
     *,
-    temperature: float = 0.2,
-    max_tokens: int = 320,
+    system_prompt: str = SORANOGEAR_ANALYST_SYSTEM_PROMPT,
+    temperature: float = 0.0,
+    max_tokens: int = 650,
+    json_mode: bool | None = None,
 ) -> str:
     base_url = (settings.AI_FALLBACK_BASE_URL or "").strip().rstrip("/")
     api_key = (settings.AI_FALLBACK_API_KEY or "").strip()
@@ -42,11 +106,28 @@ def _call_fallback_provider(
             "AI fallback provider is configured."
         )
 
+    clean_prompt = textwrap.dedent(prompt or "").strip()
+    use_json = _wants_json_output(clean_prompt) if json_mode is None else json_mode
+
     endpoint = (
         base_url
         if base_url.endswith("/chat/completions")
         else f"{base_url}/chat/completions"
     )
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": clean_prompt})
+
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if use_json:
+        body["response_format"] = {"type": "json_object"}
+
     with httpx.Client(timeout=20.0) as http_client:
         resp = http_client.post(
             endpoint,
@@ -54,34 +135,49 @@ def _call_fallback_provider(
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
+            json=body,
         )
         resp.raise_for_status()
         payload = resp.json()
         choices = payload.get("choices") or []
         if not choices:
             raise AIServiceUnavailableError("Fallback AI provider returned no choices.")
-        content = choices[0].get("message", {}).get("content", "")
-        return str(content).strip().strip('"')
+        content = _strip_thinking_blocks(
+            str(choices[0].get("message", {}).get("content", ""))
+        )
+        return content if use_json else content.strip('"')
 
 
 def ask_llm(prompt: str) -> str:
-    """Primary LLM entry point shared by Support Copilot and Commerce AI features."""
+    """Primary analytical LLM entry point shared by Support Copilot and Commerce AI features."""
     start = time.time()
+    use_json = _wants_json_output(prompt)
     try:
-        content = _call_ollama(prompt, temperature=0.1, num_predict=600)
+        content = _call_ollama(
+            prompt,
+            system_prompt=SORANOGEAR_ANALYST_SYSTEM_PROMPT,
+            temperature=0.0,
+            num_predict=700,
+            json_mode=use_json,
+        )
         elapsed = time.time() - start
-        logger.info("Ollama call completed in %.2fs (model=%s)", elapsed, settings.OLLAMA_MODEL)
+        logger.info(
+            "Ollama call completed in %.2fs (model=%s, json_mode=%s)",
+            elapsed,
+            settings.OLLAMA_MODEL,
+            use_json,
+        )
         return content
     except Exception as ollama_exc:
         logger.warning("Ollama request failed: %s", ollama_exc)
         if settings.AI_FALLBACK_BASE_URL and settings.AI_FALLBACK_API_KEY:
-            content = _call_fallback_provider(prompt, temperature=0.1, max_tokens=600)
+            content = _call_fallback_provider(
+                prompt,
+                system_prompt=SORANOGEAR_ANALYST_SYSTEM_PROMPT,
+                temperature=0.0,
+                max_tokens=700,
+                json_mode=use_json,
+            )
             elapsed = time.time() - start
             logger.info("Fallback AI call completed in %.2fs", elapsed)
             return content
@@ -235,7 +331,6 @@ def _generate_grounded_copy_fallback(
             f"cleanly into standard {clean_cat.lower()} deployments while maintaining predictable handling and durability."
         )
 
-    # Default: balanced / professional
     second_sentence = (
         f"Key highlights include {highlight_summary}, giving you practical versatility right out of the box."
         if highlights
@@ -250,7 +345,7 @@ def _generate_grounded_copy_fallback(
 
 
 def _clean_generated_description(raw_text: str) -> str:
-    cleaned = raw_text.replace("```", "").strip()
+    cleaned = _strip_thinking_blocks(raw_text).replace("```", "").strip()
     cleaned = re.sub(
         r"^(?:here(?:'s| is)\s+(?:a|the|your)\s+[^:\n]*:\s*)",
         "",
@@ -313,7 +408,13 @@ Write the product description now:"""
 
     start = time.time()
     try:
-        raw = _call_ollama(prompt, temperature=0.25, num_predict=300)
+        raw = _call_ollama(
+            prompt,
+            system_prompt=SORANOGEAR_COPYWRITER_SYSTEM_PROMPT,
+            temperature=0.25,
+            num_predict=300,
+            json_mode=False,
+        )
         provider = "ollama"
         model_used = settings.OLLAMA_MODEL
     except Exception as ollama_exc:
@@ -323,7 +424,13 @@ Write the product description now:"""
         )
         if settings.AI_FALLBACK_BASE_URL and settings.AI_FALLBACK_API_KEY:
             try:
-                raw = _call_fallback_provider(prompt, temperature=0.25, max_tokens=300)
+                raw = _call_fallback_provider(
+                    prompt,
+                    system_prompt=SORANOGEAR_COPYWRITER_SYSTEM_PROMPT,
+                    temperature=0.25,
+                    max_tokens=300,
+                    json_mode=False,
+                )
                 provider = "fallback"
                 model_used = settings.AI_FALLBACK_MODEL
             except Exception as fb_exc:

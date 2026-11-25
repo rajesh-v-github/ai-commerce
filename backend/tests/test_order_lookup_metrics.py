@@ -124,3 +124,88 @@ def test_unrecognized_question_still_uses_ollama(monkeypatch, orders):
     assert answer == "Ollama response"
     assert len(prompts) == 1
     assert "Tell me about this customer's orders." in prompts[0]
+
+
+def test_latest_single_order_strictly_returns_only_newest_order_even_if_llm_drifts(
+    monkeypatch,
+):
+    customer2_orders = [
+        SimpleNamespace(
+            order_number="ORD-20261125-0031",
+            status="CONFIRMED",
+            total_amount=Decimal("2499.00"),
+            created_at="2026-11-25 10:15:00",
+            payment_method="MOCK_CARD",
+            payment_status="PAID",
+            items=[SimpleNamespace(product_id=1, product_name="Wireless Earbuds", quantity=1)],
+        ),
+        SimpleNamespace(
+            order_number="ORD-017",
+            status="DELIVERED",
+            total_amount=Decimal("15295.00"),
+            created_at="2026-11-18 09:00:00",
+            items=[SimpleNamespace(product_id=14, product_name="Bluetooth Headset", quantity=2)],
+        ),
+        SimpleNamespace(
+            order_number="ORD-008",
+            status="DELIVERED",
+            total_amount=Decimal("3299.00"),
+            created_at="2026-11-14 14:30:00",
+            items=[SimpleNamespace(product_id=7, product_name="Webcam HD", quantity=1)],
+        ),
+    ]
+    monkeypatch.setattr(
+        tools, "get_customer_orders", lambda db, customer_id: customer2_orders
+    )
+
+    captured_prompts = []
+
+    # Case 1: Ollama returns valid JSON for the latest order
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: captured_prompts.append(prompt)
+        or (
+            '{"analysis":"Single latest order requested; ORD-20261125-0031 is Rank 1.",'
+            '"summary":"The customer\'s latest order is ORD-20261125-0031 (CONFIRMED).",'
+            '"orders":["ORD-20261125-0031"]}'
+        ),
+    )
+    ans1 = tools.generate_order_lookup(
+        None, 2, "give me only one last/latest order of this customer."
+    )
+    assert "Order: ORD-20261125-0031" in ans1
+    assert "ORD-017" not in ans1
+    assert "ORD-008" not in ans1
+    assert "ORD-20261125-0031" in captured_prompts[0]
+    assert "ORD-017" not in captured_prompts[0]
+
+    # Case 2: Even if a small LLM hallucinates ORD-017 or multiple orders, verifier locks to ORD-20261125-0031
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: (
+            '{"analysis":"picked wrong order","summary":"Latest order is ORD-017.",'
+            '"orders":["ORD-017","ORD-008"]}'
+        ),
+    )
+    ans2 = tools.generate_order_lookup(
+        None, 2, "give me only one last/latest order of this customer."
+    )
+    assert "Order: ORD-20261125-0031" in ans2
+    assert "Status: CONFIRMED" in ans2
+    assert "ORD-017" not in ans2
+    assert "ORD-008" not in ans2
+
+    # Case 3: Oldest / first order query selects ORD-008
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: '{"analysis":"oldest order","summary":"","orders":["ORD-008"]}',
+    )
+    ans_oldest = tools.generate_order_lookup(
+        None, 2, "give me the first/oldest order of this customer."
+    )
+    assert "Order: ORD-008" in ans_oldest
+    assert "ORD-20261125-0031" not in ans_oldest
+
