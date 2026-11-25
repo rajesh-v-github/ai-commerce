@@ -346,3 +346,92 @@ def test_list_out_phrasing_and_compound_category_keyboard_vs_mouse(monkeypatch):
     assert "Product: Wireless Mouse" in rec_wireless
     assert "Mechanical Keyboard" not in rec_wireless
 
+
+def test_bags_or_backpacks_and_disjunctive_type_queries_work_in_lookup_and_recommendations(
+    monkeypatch,
+):
+    monkeypatch.setattr(tools, "get_products", lambda db: PRODUCTS)
+
+    prompts = []
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: prompts.append(prompt)
+        or '{"analysis":"Laptop Backpack is a bag/backpack.","products":["Laptop Backpack"]}',
+    )
+    lookup_ans = tools.generate_product_lookup(
+        None, "give me the products related to bags or backpacks"
+    )
+    assert "Product: Laptop Backpack" in lookup_ans
+    assert "Category: Laptop Bags & Cases" in lookup_ans
+    assert "Laptop Pro 14" not in lookup_ans
+    assert "USB-C Hub" not in lookup_ans
+
+    # Also verify "bags" alone (without saying "backpacks") matches Laptop Backpack
+    lookup_bags_only = tools.generate_product_lookup(
+        None, "give me the products related to bags"
+    )
+    assert "Product: Laptop Backpack" in lookup_bags_only
+    assert "Laptop Pro 14" not in lookup_bags_only
+
+    # Also verify "laptop bags" returns Laptop Backpack and NOT Laptop Pro 14
+    lookup_laptop_bags = tools.generate_product_lookup(None, "give me laptop bags")
+    assert "Product: Laptop Backpack" in lookup_laptop_bags
+    assert "Laptop Pro 14" not in lookup_laptop_bags
+
+    # Same question in Product Recommendations (including when LLM returns JSON or empty list)
+    monkeypatch.setattr(
+        tools,
+        "ask_llm",
+        lambda prompt: (
+            '{"analysis":"Matches carry bag/backpack need.",'
+            '"recommendations":[{"product":"Laptop Backpack","reason":"Padded business laptop backpack"}]}'
+        ),
+    )
+    rec_ans = tools.generate_product_recommendation(
+        None, "give me the products related to bags or backpacks"
+    )
+    assert "Product: Laptop Backpack" in rec_ans
+    assert "Reason: Padded business laptop backpack" in rec_ans
+    assert "Laptop Pro 14" not in rec_ans
+
+
+def test_ollama_service_enables_system_prompt_json_grammar_and_strips_think_tags(
+    monkeypatch,
+):
+    import app.services.ollama_service as ollama_svc
+
+    captured_calls = []
+
+    class FakeMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class FakeResponse:
+        def __init__(self, content):
+            self.message = FakeMessage(content)
+
+    class FakeOllamaClient:
+        def __init__(self, host=None):
+            self.host = host
+
+        def chat(self, **kwargs):
+            captured_calls.append(kwargs)
+            return FakeResponse(
+                '<think>Evaluating constraints...</think>{"analysis":"ok","products":["Laptop Backpack"]}'
+            )
+
+    monkeypatch.setattr(ollama_svc, "Client", FakeOllamaClient)
+
+    result = ollama_svc.ask_llm(
+        'Analyze catalog.\nReturn ONLY valid JSON:\n{"analysis":"","products":[]}'
+    )
+    assert result == '{"analysis":"ok","products":["Laptop Backpack"]}'
+    assert len(captured_calls) == 1
+    call = captured_calls[0]
+    assert call["format"] == "json"
+    assert call["messages"][0]["role"] == "system"
+    assert call["options"]["temperature"] == 0.0
+    assert call["keep_alive"] == "30m"
+
+
