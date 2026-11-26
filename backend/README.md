@@ -72,7 +72,7 @@ cp ../.env.example .env     # Windows PowerShell: Copy-Item ..\.env.example .env
 | `JWT_EXPIRE_MINUTES` | No | `120` | Access token expiration window in minutes. |
 | `DATABASE_URL` | No | `sqlite:///./commerce.db` | SQLAlchemy URL (`sqlite:///...` or `postgresql+psycopg://...`). |
 | `APP_NAME` | No | `SoranoGear Commerce & Support` | FastAPI service title. |
-| `CORS_ORIGINS` | No | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated allowed browser origins. |
+| `CORS_ORIGINS` | No | `http://localhost:5174,http://127.0.0.1:5174,http://localhost:5714,http://127.0.0.1:5714` | Comma-separated allowed browser origins. |
 | `UPLOAD_DIR` | No | `./uploads` | Directory where uploaded product images (`/api/uploads/products/*`) are saved. |
 | `OLLAMA_BASE_URL` | No | `http://127.0.0.1:11434` | Local Ollama HTTP endpoint. |
 | `OLLAMA_MODEL` | No | `llama3.2:1b` | Ollama model name used by Support Copilot and Admin AI Product Copywriter. |

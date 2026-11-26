@@ -114,7 +114,7 @@ npm run lint
 npm run build
 ```
 
-Open **`http://localhost:5173/`**:
+Open **`http://localhost:5714/`**:
 - **`/`** — SoranoGear Customer Storefront
 - **`/admin`** — Executive-Only Admin Command Center (`support` role required)
 - **`/support`** — AI Customer Support Executive Workspace (`support` role required)

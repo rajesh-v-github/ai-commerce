@@ -16,7 +16,7 @@ LocalTunnel -> frontend preview on port 5174
 ```
 
 The app remains available locally as well. The development server at
-`http://localhost:5173/` is separate from the production preview at
+`http://localhost:5714/` is separate from the production preview at
 `http://localhost:5174/`; both can run at the same time. The shared URL goes
 through port 5174.
 
@@ -77,6 +77,15 @@ the other person's browser does not try to call its own `localhost`.
 
 ### 4. Start LocalTunnel
 
+The command below shares the production preview. To share the development
+server instead, start it with:
+
+```powershell
+npm run dev -- --host 0.0.0.0
+```
+
+Then run LocalTunnel with `--port 5714` instead of `--port 5174`.
+
 In a third PowerShell terminal:
 
 ```powershell
@@ -89,7 +98,7 @@ asking them to enter the host IP displayed there before proceeding to the app.
 
 ## Verify the app
 
-- On your computer, open `http://localhost:5173/` for the development server or
+- On your computer, open `http://localhost:5714/` for the development server or
   `http://localhost:5174/` for the production preview.
 - From another browser or device, open the HTTPS URL printed by LocalTunnel.
 - Sign in with an authorized support account. The orders, tickets, and customer
@@ -104,7 +113,7 @@ preview serves the updated bundle.
 
 Press `Ctrl+C` in the LocalTunnel terminal and the Vite preview terminal. The
 public URL will stop working. This does not stop the separate development
-server on port `5173` or the backend; stop those separately only if you no
+server on port `5714` or the backend; stop those separately only if you no
 longer need them locally.
 
 ## Access and data safety

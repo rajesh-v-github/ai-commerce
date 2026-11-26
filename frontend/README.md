@@ -63,7 +63,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173/`. All `/api/*` calls are proxied to `http://127.0.0.1:8000` by `vite.config.js` (no hardcoded `localhost` URLs in browser code).
+Open `http://localhost:5714/`. All `/api/*` calls are proxied to `http://127.0.0.1:8000` by `vite.config.js` (no hardcoded `localhost` URLs in browser code).
 
 ### Lint & Production Build
 

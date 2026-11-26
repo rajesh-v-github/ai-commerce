@@ -7,7 +7,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60
     DATABASE_URL: str = "sqlite:///./commerce.db"
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ORIGINS: str = (
+        "http://localhost:5174,http://127.0.0.1:5174,"
+        "http://localhost:5714,http://127.0.0.1:5714"
+    )
 
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:1b"

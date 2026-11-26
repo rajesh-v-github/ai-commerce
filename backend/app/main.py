@@ -23,7 +23,12 @@ def _build_cors_origins() -> list[str]:
         for origin in (settings.CORS_ORIGINS or "").split(",")
         if origin.strip()
     ]
-    defaults = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    defaults = [
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5714",
+        "http://127.0.0.1:5714",
+    ]
     merged: list[str] = []
     for origin in [*configured, *defaults]:
         if origin not in merged:
